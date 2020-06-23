@@ -1,0 +1,15 @@
+[package]
+name = "leetup"
+version = "0.1.0"
+authors = ["dragfire <asem.devajit@gmail.com>"]
+edition = "2018"
+description = "Leetcode cli"
+
+[dependencies]
+clap = "2.33.1"
+html5ever = "0.25.1"
+structopt = "0.3.15"
+reqwest = { version = "0.10.6", features = ["blocking", "json"] }
+thiserror = "1.0.20"
+anyhow = "1.0.31"
+serde = { version = "1.0", features = ["derive"] }
