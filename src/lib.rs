@@ -1,6 +1,8 @@
 pub use error::{LeetUpError, Result};
-pub use fetch::fetch_all_problems;
 
 pub mod cache;
+pub mod cmd;
 mod error;
-mod fetch;
+pub mod fetch;
+pub mod icon;
+pub mod service;
