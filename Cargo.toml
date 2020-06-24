@@ -14,3 +14,4 @@ thiserror = "1.0.20"
 anyhow = "1.0.31"
 serde = { version = "1.0", features = ["derive"] }
 ansi_term = "0.12.1"
+serde_json = "1.0.55"
