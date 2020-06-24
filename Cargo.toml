@@ -13,3 +13,4 @@ reqwest = { version = "0.10.6", features = ["blocking", "json"] }
 thiserror = "1.0.20"
 anyhow = "1.0.31"
 serde = { version = "1.0", features = ["derive"] }
+ansi_term = "0.12.1"
