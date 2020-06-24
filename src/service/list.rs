@@ -68,6 +68,19 @@ pub struct ListResponse {
     pub category_slug: String,
 }
 
+enum Query {
+    Easy,
+    Medium,
+    Hard,
+    NotEasy,
+    NotMedium,
+    NotHard,
+    Locked,
+    NotLocked,
+    Starred,
+    UnStarred,
+}
+
 /// Fetch all problems
 pub fn fetch_all_problems() -> Result<ListResponse> {
     fetch::fetch_url("/problems/all")?
@@ -75,11 +88,8 @@ pub fn fetch_all_problems() -> Result<ListResponse> {
         .map_err(LeetUpError::Reqwest)
 }
 
-pub fn list_problems(_list: List) -> crate::Result<()> {
-    let mut res = fetch_all_problems()?;
-    let probs = &mut res.stat_status_pairs;
-    probs.sort_by(Ord::cmp);
-    for obj in &probs[..50] {
+fn pretty_list(probs: Vec<&StatStatusPair>) {
+    for obj in probs {
         let qstat = &obj.stat;
 
         let starred_icon = if obj.is_favor {
@@ -100,7 +110,7 @@ pub fn list_problems(_list: List) -> crate::Result<()> {
         };
 
         println!(
-            "{} {} {} [{:^4}] {:60} {:6}",
+            "{} {} {} [{:^4}] {:75} {:6}",
             starred_icon,
             locked_icon,
             acd,
@@ -109,6 +119,26 @@ pub fn list_problems(_list: List) -> crate::Result<()> {
             obj.difficulty.to_string()
         );
     }
+}
+
+pub fn list_problems(list: List) -> crate::Result<()> {
+    let mut res = fetch_all_problems()?;
+    let probs = &mut res.stat_status_pairs;
+    let default_keyword = String::from("");
+    let keyword = list
+        .keyword
+        .as_ref()
+        .unwrap_or(&default_keyword)
+        .to_ascii_lowercase();
+    probs.sort_by(Ord::cmp);
+
+    let filtered_probs: Vec<&StatStatusPair> = probs
+        .iter()
+        .filter(|o| o.stat.question_title_slug.contains(&keyword))
+        .collect();
+
+    pretty_list(filtered_probs);
+
     Ok(())
 }
 
