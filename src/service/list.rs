@@ -68,17 +68,52 @@ pub struct ListResponse {
     pub category_slug: String,
 }
 
+/// -q to query by conditions.
+///    e = easy, E = not easy = m + h.
+///    m = medium, M = not medium = e + h.
+///    h = hard, H = not hard = e + m.
+///    d = done = AC-ed, D = not AC-ed.
+///    l = locked, L = not locked.
+///    s = starred, S = unstarred.
+///    mdLs
+#[derive(Debug)]
 enum Query {
-    Easy,
+    Easy = 1,
     Medium,
     Hard,
     NotEasy,
     NotMedium,
     NotHard,
     Locked,
-    NotLocked,
+    Unlocked,
+    Done,
+    NotDone,
     Starred,
-    UnStarred,
+    Unstarred,
+}
+
+impl Query {
+    fn from_str(q: &str) -> Vec<Query> {
+        let mut queries = vec![];
+        for c in q.chars() {
+            match c {
+                'e' => queries.push(Query::Easy),
+                'E' => queries.push(Query::NotEasy),
+                'm' => queries.push(Query::Medium),
+                'M' => queries.push(Query::NotMedium),
+                'h' => queries.push(Query::Hard),
+                'H' => queries.push(Query::NotHard),
+                'l' => queries.push(Query::Locked),
+                'L' => queries.push(Query::Unlocked),
+                'd' => queries.push(Query::Done),
+                'D' => queries.push(Query::NotDone),
+                's' => queries.push(Query::Starred),
+                'S' => queries.push(Query::Unstarred),
+                _ => (),
+            }
+        }
+        queries
+    }
 }
 
 /// Fetch all problems
@@ -88,7 +123,7 @@ pub fn fetch_all_problems() -> Result<ListResponse> {
         .map_err(LeetUpError::Reqwest)
 }
 
-fn pretty_list(probs: Vec<&StatStatusPair>) {
+fn pretty_list(probs: &Vec<&StatStatusPair>) {
     for obj in probs {
         let qstat = &obj.stat;
 
@@ -121,23 +156,49 @@ fn pretty_list(probs: Vec<&StatStatusPair>) {
     }
 }
 
+fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
+    let mut is_satisfied = true;
+
+    for q in queries {
+        match q {
+            Query::Easy => is_satisfied &= o.difficulty.level == 1,
+            Query::NotEasy => is_satisfied &= o.difficulty.level != 1,
+            Query::Medium => is_satisfied &= o.difficulty.level == 2,
+            Query::NotMedium => is_satisfied &= o.difficulty.level != 2,
+            Query::Hard => is_satisfied &= o.difficulty.level == 3,
+            Query::NotHard => is_satisfied &= o.difficulty.level != 3,
+            Query::Locked => is_satisfied &= o.paid_only,
+            Query::Unlocked => is_satisfied &= !o.paid_only,
+            Query::Done => is_satisfied &= o.status.is_some(),
+            Query::NotDone => is_satisfied &= o.status.is_none(),
+            Query::Starred => is_satisfied &= o.is_favor,
+            Query::Unstarred => is_satisfied &= !o.is_favor,
+        }
+    }
+
+    is_satisfied
+}
+
 pub fn list_problems(list: List) -> crate::Result<()> {
     let mut res = fetch_all_problems()?;
     let probs = &mut res.stat_status_pairs;
     let default_keyword = String::from("");
-    let keyword = list
-        .keyword
-        .as_ref()
-        .unwrap_or(&default_keyword)
-        .to_ascii_lowercase();
+    let queries: Vec<Query> = Query::from_str(list.query.as_ref().unwrap());
+    let filter_predicate = |o: &&StatStatusPair| {
+        let keyword = list
+            .keyword
+            .as_ref()
+            .unwrap_or(&default_keyword)
+            .to_ascii_lowercase();
+
+        o.stat.question_title_slug.contains(&keyword) && apply_queries(&queries, o)
+    };
+
     probs.sort_by(Ord::cmp);
 
-    let filtered_probs: Vec<&StatStatusPair> = probs
-        .iter()
-        .filter(|o| o.stat.question_title_slug.contains(&keyword))
-        .collect();
+    let filtered_probs: Vec<_> = probs.iter().filter(filter_predicate).collect();
 
-    pretty_list(filtered_probs);
+    pretty_list(&filtered_probs);
 
     Ok(())
 }

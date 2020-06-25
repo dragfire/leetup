@@ -6,3 +6,4 @@ mod error;
 pub mod fetch;
 pub mod icon;
 pub mod service;
+pub mod spec;
