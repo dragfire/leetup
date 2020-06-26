@@ -15,6 +15,10 @@ pub struct List {
     /// Show statistic counter of the output list
     #[structopt(short, long)]
     pub stat: bool,
+
+    /// Order by ProblemId, Question Title, or Difficulty
+    #[structopt(short, long)]
+    pub order: Option<String>,
 }
 
 #[derive(Debug, StructOpt)]

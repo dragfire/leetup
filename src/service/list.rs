@@ -1,6 +1,7 @@
 use crate::{cmd::List, fetch, icon::Icon, LeetUpError, Result};
 use ansi_term::Colour::{Green, Red, Yellow};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
 #[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Difficulty {
@@ -91,7 +92,7 @@ enum Query {
     Starred,
     Unstarred,
 }
-
+// NOTE: Implement FromStr, and use it to construct Vec<Query>
 impl Query {
     fn from_str(q: &str) -> Vec<Query> {
         let mut queries = vec![];
@@ -116,6 +117,42 @@ impl Query {
     }
 }
 
+enum OrderBy {
+    /// Order by question Id in Ascending order
+    IdAsc,
+
+    /// Order by question Id in Descending order
+    IdDesc,
+    TitleAsc,
+    TitleDesc,
+    DifficultyAsc,
+    DifficultyDesc,
+}
+
+impl From<char> for OrderBy {
+    fn from(c: char) -> Self {
+        match c {
+            'i' => OrderBy::IdAsc,
+            'I' => OrderBy::IdDesc,
+            't' => OrderBy::TitleAsc,
+            'T' => OrderBy::TitleDesc,
+            'd' => OrderBy::DifficultyAsc,
+            'D' => OrderBy::DifficultyDesc,
+            _ => OrderBy::IdAsc,
+        }
+    }
+}
+
+impl OrderBy {
+    fn from_str(order: &str) -> Vec<OrderBy> {
+        let mut orders = vec![];
+        for c in order.chars() {
+            orders.push(OrderBy::from(c));
+        }
+        orders
+    }
+}
+
 /// Fetch all problems
 pub fn fetch_all_problems() -> Result<ListResponse> {
     fetch::fetch_url("/problems/all")?
@@ -123,7 +160,7 @@ pub fn fetch_all_problems() -> Result<ListResponse> {
         .map_err(LeetUpError::Reqwest)
 }
 
-fn pretty_list(probs: &Vec<&StatStatusPair>) {
+fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
     for obj in probs {
         let qstat = &obj.stat;
 
@@ -182,28 +219,50 @@ fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
 pub fn list_problems(list: List) -> crate::Result<()> {
     let mut res = fetch_all_problems()?;
     let probs = &mut res.stat_status_pairs;
-    let default_keyword = String::from("");
-    let queries: Vec<Query> = Query::from_str(list.query.as_ref().unwrap());
-    let filter_predicate = |o: &&StatStatusPair| {
+
+    if list.order.is_some() {
+        let orders = OrderBy::from_str(list.order.as_ref().unwrap());
+        probs.sort_by(|a, b| {
+            let mut ordering = Ordering::Equal;
+            let id_ordering = a.stat.question_id.cmp(&b.stat.question_id);
+            let title_ordering = a.stat.question_title_slug.cmp(&b.stat.question_title_slug);
+            let diff_ordering = a.difficulty.level.cmp(&b.difficulty.level);
+
+            for order in &orders {
+                match order {
+                    OrderBy::IdAsc => ordering = ordering.then(id_ordering),
+                    OrderBy::IdDesc => ordering = ordering.then(id_ordering.reverse()),
+                    OrderBy::TitleAsc => ordering = ordering.then(title_ordering),
+                    OrderBy::TitleDesc => ordering = ordering.then(title_ordering.reverse()),
+                    OrderBy::DifficultyAsc => ordering = ordering.then(diff_ordering),
+                    OrderBy::DifficultyDesc => ordering = ordering.then(diff_ordering.reverse()),
+                }
+            }
+
+            ordering
+        });
+    } else {
+        probs.sort_by(Ord::cmp);
+    }
+
+    if list.query.is_some() {
+        let default_keyword = String::from("");
         let keyword = list
             .keyword
             .as_ref()
             .unwrap_or(&default_keyword)
             .to_ascii_lowercase();
+        let queries: Vec<Query> = Query::from_str(list.query.as_ref().unwrap());
+        let filter_predicate = |o: &&StatStatusPair| {
+            o.stat.question_title_slug.contains(&keyword) && apply_queries(&queries, o)
+        };
 
-        o.stat.question_title_slug.contains(&keyword) && apply_queries(&queries, o)
-    };
+        let filtered_probs: Vec<&StatStatusPair> = probs.iter().filter(filter_predicate).collect();
 
-    probs.sort_by(Ord::cmp);
-
-    let filtered_probs: Vec<_> = probs.iter().filter(filter_predicate).collect();
-
-    pretty_list(&filtered_probs);
+        pretty_list(filtered_probs.into_iter());
+    } else {
+        pretty_list(probs.iter());
+    }
 
     Ok(())
-}
-
-#[test]
-fn test_fetch_url() {
-    println!("{:?}", fetch_all_problems().unwrap());
 }
