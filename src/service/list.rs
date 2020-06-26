@@ -92,28 +92,30 @@ enum Query {
     Starred,
     Unstarred,
 }
-// NOTE: Implement FromStr, and use it to construct Vec<Query>
+
+impl From<char> for Query {
+    fn from(c: char) -> Self {
+        match c {
+            'e' => Query::Easy,
+            'E' => Query::NotEasy,
+            'm' => Query::Medium,
+            'M' => Query::NotMedium,
+            'h' => Query::Hard,
+            'H' => Query::NotHard,
+            'l' => Query::Locked,
+            'L' => Query::Unlocked,
+            'd' => Query::Done,
+            'D' => Query::NotDone,
+            's' => Query::Starred,
+            'S' => Query::Unstarred,
+            _ => Query::Easy,
+        }
+    }
+}
+
 impl Query {
     fn from_str(q: &str) -> Vec<Query> {
-        let mut queries = vec![];
-        for c in q.chars() {
-            match c {
-                'e' => queries.push(Query::Easy),
-                'E' => queries.push(Query::NotEasy),
-                'm' => queries.push(Query::Medium),
-                'M' => queries.push(Query::NotMedium),
-                'h' => queries.push(Query::Hard),
-                'H' => queries.push(Query::NotHard),
-                'l' => queries.push(Query::Locked),
-                'L' => queries.push(Query::Unlocked),
-                'd' => queries.push(Query::Done),
-                'D' => queries.push(Query::NotDone),
-                's' => queries.push(Query::Starred),
-                'S' => queries.push(Query::Unstarred),
-                _ => (),
-            }
-        }
-        queries
+        q.chars().map(Query::from).collect()
     }
 }
 
@@ -145,11 +147,7 @@ impl From<char> for OrderBy {
 
 impl OrderBy {
     fn from_str(order: &str) -> Vec<OrderBy> {
-        let mut orders = vec![];
-        for c in order.chars() {
-            orders.push(OrderBy::from(c));
-        }
-        orders
+        order.chars().map(OrderBy::from).collect()
     }
 }
 
@@ -222,6 +220,7 @@ pub fn list_problems(list: List) -> crate::Result<()> {
 
     if list.order.is_some() {
         let orders = OrderBy::from_str(list.order.as_ref().unwrap());
+
         probs.sort_by(|a, b| {
             let mut ordering = Ordering::Equal;
             let id_ordering = a.stat.question_id.cmp(&b.stat.question_id);
