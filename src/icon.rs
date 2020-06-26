@@ -4,7 +4,6 @@ pub enum Icon {
     Star,
     _Unstar,
     Lock,
-    NoLock,
     Empty,
 }
 
@@ -16,8 +15,7 @@ impl ToString for Icon {
             Icon::Star => "★".to_string(),
             Icon::_Unstar => "☆".to_string(),
             Icon::Lock => "🔒".to_string(),
-            Icon::NoLock => "  ".to_string(),
-            Icon::Empty => "  ".to_string(),
+            Icon::Empty => " ".to_string(),
         }
     }
 }
