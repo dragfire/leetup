@@ -171,16 +171,17 @@ fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
         let locked_icon = if obj.paid_only {
             Red.paint(Icon::Lock.to_string()).to_string()
         } else {
-            Icon::NoLock.to_string()
+            Icon::Empty.to_string()
         };
 
-        let acd = match obj.status {
-            Some(_) => Green.paint(Icon::Yes.to_string()).to_string(),
-            None => Icon::Empty.to_string(),
+        let acd = if obj.status.is_some() {
+            Green.paint(Icon::Yes.to_string()).to_string()
+        } else {
+            Icon::Empty.to_string()
         };
 
         println!(
-            "{} {} {} [{:^4}] {:75} {:6}",
+            "{} {:2} {} [{:^4}] {:75} {:6}",
             starred_icon,
             locked_icon,
             acd,
@@ -244,16 +245,22 @@ pub fn list_problems(list: List) -> crate::Result<()> {
         probs.sort_by(Ord::cmp);
     }
 
-    if list.query.is_some() {
-        let default_keyword = String::from("");
-        let keyword = list
-            .keyword
-            .as_ref()
-            .unwrap_or(&default_keyword)
-            .to_ascii_lowercase();
-        let queries: Vec<Query> = Query::from_str(list.query.as_ref().unwrap());
+    if list.query.is_some() || list.keyword.is_some() {
         let filter_predicate = |o: &&StatStatusPair| {
-            o.stat.question_title_slug.contains(&keyword) && apply_queries(&queries, o)
+            let default_keyword = String::from("");
+            let keyword = list
+                .keyword
+                .as_ref()
+                .unwrap_or(&default_keyword)
+                .to_ascii_lowercase();
+            let has_keyword = o.stat.question_title_slug.contains(&keyword);
+
+            if list.query.is_none() {
+                has_keyword
+            } else {
+                let queries: Vec<Query> = Query::from_str(list.query.as_ref().unwrap());
+                has_keyword && apply_queries(&queries, o)
+            }
         };
 
         let filtered_probs: Vec<&StatStatusPair> = probs.iter().filter(filter_predicate).collect();
