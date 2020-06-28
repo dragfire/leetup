@@ -1,18 +1,21 @@
-use crate::{service, LeetUpError, Result};
+use crate::{service::ServiceProvider, LeetUpError, Result};
+use reqwest::header;
 
-const API_URI: &str = "https://leetcode.com/api";
+/// Make a GET request
+pub fn get<'a, P: ServiceProvider<'a>>(
+    url: &str,
+    provider: &P,
+) -> Result<reqwest::blocking::Response> {
+    let session = provider.session();
+    let mut headers = header::HeaderMap::new();
+    if let Some(sess) = session {
+        let cookie = sess.cookie.parse().unwrap();
+        headers.insert("Cookie", cookie);
+    }
 
-/// Fetch URL
-pub fn fetch_url(path: &str) -> Result<reqwest::blocking::Response> {
-    let url = API_URI.to_string() + path;
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .build()?;
 
-    // make sure this also works with default headers
-    let client = reqwest::blocking::Client::builder().build().unwrap();
-
-    let res = client
-        .get(&url)
-        .header("Cookie", service::auth::Session::new().cookie)
-        .send();
-
-    res.map_err(LeetUpError::Reqwest)
+    client.get(url).send().map_err(LeetUpError::Reqwest)
 }

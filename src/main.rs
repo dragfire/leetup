@@ -1,16 +1,5 @@
-use leetup::{
-    cmd::{Command, LeetUpArgs},
-    service,
-};
-use structopt::StructOpt;
+use leetup::cmd;
 
 fn main() {
-    let opt = LeetUpArgs::from_args();
-
-    match opt.command {
-        Command::List(list) => {
-            service::list::list_problems(list).unwrap();
-        }
-        _ => (),
-    }
+    cmd::process().unwrap();
 }
