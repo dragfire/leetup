@@ -29,7 +29,7 @@ pub struct List {
 pub struct User {
     /// Login using cookie
     #[structopt(short, long)]
-    pub cookie: Option<String>,
+    pub cookie: Option<Option<String>>,
 }
 
 #[derive(Debug, StructOpt)]

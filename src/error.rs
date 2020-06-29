@@ -14,6 +14,9 @@ pub enum LeetUpError {
     /// IO Error
     Io(#[from] io::Error),
 
+    /// Serde Error
+    Serde(#[from] serde_json::Error),
+
     /// Unexpected Command Error
     #[error("Unexpected command")]
     UnexpectedCommand,

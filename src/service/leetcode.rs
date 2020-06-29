@@ -22,7 +22,7 @@ pub struct Leetcode<'a> {
     /// Get config from config.json
     config: Config,
 
-    /// Provides caching mechanism for OJ.
+    /// Provides caching mechanism for OJ(Online Judge).
     cache: KvStore,
 
     /// Service provider name
@@ -49,6 +49,7 @@ impl<'a> Leetcode<'a> {
         let mut session: Option<Session> = None;
         let cookie = cache.get("cookie".to_string()).unwrap();
 
+        // Set session if the user is logged in
         if let Some(val) = cookie {
             session = Some(Session::new(val));
         }
@@ -202,9 +203,17 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(&self.config)
     }
 
-    fn list_problems(&self, list: List) -> Result<()> {
-        let mut res = fetch_all_problems(self)?;
-        let probs = &mut res.stat_status_pairs;
+    fn list_problems(&mut self, list: List) -> Result<()> {
+        let mut problems_res: ListResponse;
+        if let Some(ref val) = self.cache.get("problems".to_string())? {
+            problems_res = serde_json::from_str::<ListResponse>(val)?;
+        } else {
+            problems_res = fetch_all_problems(self)?;
+            let res_serialized = serde_json::to_string(&problems_res)?;
+            self.cache.set("problems".to_string(), res_serialized)?;
+        }
+
+        let probs = &mut problems_res.stat_status_pairs;
 
         if list.order.is_some() {
             let orders = OrderBy::from_str(list.order.as_ref().unwrap());
@@ -276,9 +285,27 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     fn process_auth(&mut self, user: User) -> Result<()> {
-        if let Some(cookie) = user.cookie {
+        if let Some(val) = user.cookie {
+            let mut cookie = String::new();
+
+            if let Some(val) = val {
+                cookie = val;
+            } else {
+                println!("Enter Cookie:");
+                let stdin = std::io::stdin();
+                stdin.read_line(&mut cookie)?;
+                cookie = String::from(cookie.trim_end());
+            }
+
             self.cache.set("cookie".to_string(), cookie)?;
+
+            // remove key `problems`, rebuild problems cache.
+            //
+            // NOTE: cache.remove throws "Key not found" error
+            // so ignore that error if it is thrown.
+            if let Err(_) = self.cache.remove("problems".to_string()) {}
         }
+
         Ok(())
     }
 

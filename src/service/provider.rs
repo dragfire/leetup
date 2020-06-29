@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 pub trait ServiceProvider<'a> {
     fn session(&self) -> Option<&Session>;
     fn config(&self) -> Result<&Config>;
-    fn list_problems(&self, list: cmd::List) -> Result<()>;
+    fn list_problems(&mut self, list: cmd::List) -> Result<()>;
     fn pick_problem(&self, pick: Command) -> Result<()>;
     fn problem_test(&self) -> Result<()>;
     fn problem_submit(&self) -> Result<()>;
