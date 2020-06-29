@@ -30,6 +30,10 @@ pub struct User {
     /// Login using cookie
     #[structopt(short, long)]
     pub cookie: Option<Option<String>>,
+
+    /// Login using github
+    #[structopt(short, long)]
+    pub github: Option<Option<String>>,
 }
 
 #[derive(Debug, StructOpt)]
