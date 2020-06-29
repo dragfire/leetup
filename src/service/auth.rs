@@ -1,16 +1,13 @@
-use crate::{cmd::User, Result};
+use crate::{fetch, service::ServiceProvider, Result};
+use reqwest::header;
 
-pub struct Session<'a> {
-    pub cookie: &'a str,
-}
+pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<()> {
+    let config = provider.config()?;
+    let mut headers = header::HeaderMap::new();
+    headers.insert("jar", "true".parse().unwrap());
 
-impl<'a> Session<'a> {
-    pub fn new(cookie: &'a str) -> Self {
-        Session { cookie }
-    }
-}
+    let res = fetch::get(&config.urls.github_login_request, headers)?;
+    println!("{:#?}", res.text()?);
 
-pub fn login(user: User) -> Result<()> {
-    println!("{:?}", user);
     Ok(())
 }

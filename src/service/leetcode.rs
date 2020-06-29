@@ -3,7 +3,7 @@ use crate::{
     cmd::{Command, List, OrderBy, Query, User},
     fetch,
     icon::Icon,
-    service::{Cache, Config, ServiceProvider, Session, Urls},
+    service::{auth, Cache, Config, ServiceProvider, Session, Urls},
     LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
@@ -35,6 +35,8 @@ impl<'a> Leetcode<'a> {
             base: "https://leetcode.com".to_string(),
             api: "https://leetcode.com/api".to_string(),
             problems_all: "https://leetcode.com/api/problems/all".to_string(),
+            github_login_request: "https://github.com/login".to_string(),
+            github_session_request: "https://github.com/session".to_string(),
         };
         let name = "leetcode";
         let config = Config::new(urls);
@@ -132,7 +134,13 @@ pub struct ListResponse {
 /// Fetch all problems
 pub fn fetch_all_problems<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<ListResponse> {
     let url = &provider.config()?.urls.problems_all;
-    fetch::get(url, provider)?
+    let session = provider.session();
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(sess) = session {
+        let cookie = sess.cookie.parse().unwrap();
+        headers.insert("Cookie", cookie);
+    }
+    fetch::get(url, headers)?
         .json::<ListResponse>()
         .map_err(LeetUpError::Reqwest)
 }
@@ -285,6 +293,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     fn process_auth(&mut self, user: User) -> Result<()> {
+        // cookie login
         if let Some(val) = user.cookie {
             let mut cookie = String::new();
 
@@ -304,6 +313,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             // NOTE: cache.remove throws "Key not found" error
             // so ignore that error if it is thrown.
             if let Err(_) = self.cache.remove("problems".to_string()) {}
+        }
+
+        // github login
+        if let Some(_) = user.github {
+            auth::github_login(self)?;
         }
 
         Ok(())
