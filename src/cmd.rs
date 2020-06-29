@@ -1,11 +1,8 @@
 use crate::{
-    cache,
     service::{self, ServiceProvider},
     Result,
 };
 use structopt::StructOpt;
-
-const DEFAULT_PROVIDER: &'static str = "leetcode";
 
 #[derive(Debug, StructOpt)]
 pub struct List {
@@ -135,14 +132,14 @@ pub struct LeetUpArgs {
 
 pub fn process() -> Result<()> {
     let opt = LeetUpArgs::from_args();
+    let mut provider = service::Leetcode::new();
 
     match opt.command {
         Command::List(list) => {
-            let provider = service::Leetcode::new();
             provider.list_problems(list)?;
         }
         Command::User(user) => {
-            service::auth::login(user)?;
+            provider.process_auth(user)?;
         }
     }
     Ok(())

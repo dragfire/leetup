@@ -1,5 +1,6 @@
 use crate::{
-    cmd::{Command, List, OrderBy, Query},
+    cache::kvstore::{self, KvStore},
+    cmd::{Command, List, OrderBy, Query, User},
     fetch,
     icon::Icon,
     service::{Cache, Config, ServiceProvider, Session, Urls},
@@ -8,11 +9,24 @@ use crate::{
 use ansi_term::Colour::{Green, Red, Yellow};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::env;
+use std::path::PathBuf;
 
-#[derive(Debug)]
+/// Leetcode holds all attributes required to implement ServiceProvider trait.
 pub struct Leetcode<'a> {
-    session: Option<Session<'a>>,
+    /// Store user session
+    ///
+    /// If session is empty, user should be able to view problems.
+    session: Option<Session>,
+
+    /// Get config from config.json
     config: Config,
+
+    /// Provides caching mechanism for OJ.
+    cache: KvStore,
+
+    /// Service provider name
+    name: &'a str,
 }
 
 impl<'a> Leetcode<'a> {
@@ -22,11 +36,28 @@ impl<'a> Leetcode<'a> {
             api: "https://leetcode.com/api".to_string(),
             problems_all: "https://leetcode.com/api/problems/all".to_string(),
         };
+        let name = "leetcode";
         let config = Config::new(urls);
 
+        // create a data directory: ./data/leetcode/*.log
+        let mut data_dir = PathBuf::new();
+        data_dir.push(env::current_dir().unwrap());
+        data_dir.push("data");
+        data_dir.push("leetcode");
+
+        let mut cache = KvStore::open(data_dir).unwrap();
+        let mut session: Option<Session> = None;
+        let cookie = cache.get("cookie".to_string()).unwrap();
+
+        if let Some(val) = cookie {
+            session = Some(Session::new(val));
+        }
+
         Leetcode {
-            session: None,
+            session,
             config,
+            cache,
+            name,
         }
     }
 }
@@ -244,12 +275,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         panic!();
     }
 
-    fn login(&mut self) -> Result<()> {
-        panic!();
-    }
-
-    fn logout(&mut self) -> Result<()> {
-        panic!();
+    fn process_auth(&mut self, user: User) -> Result<()> {
+        if let Some(cookie) = user.cookie {
+            self.cache.set("cookie".to_string(), cookie)?;
+        }
+        Ok(())
     }
 
     fn cache(&mut self) -> Result<&Cache> {

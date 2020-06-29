@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{self, Command},
+    cmd::{self, Command, User},
     Result,
 };
 use serde::{Deserialize, Serialize};
@@ -40,18 +40,17 @@ pub trait ServiceProvider<'a> {
     fn pick_problem(&self, pick: Command) -> Result<()>;
     fn problem_test(&self) -> Result<()>;
     fn problem_submit(&self) -> Result<()>;
-    fn login(&mut self) -> Result<()>;
-    fn logout(&mut self) -> Result<()>;
+    fn process_auth(&mut self, user: User) -> Result<()>;
     fn cache(&mut self) -> Result<&Cache>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Session<'a> {
-    pub cookie: &'a str,
+pub struct Session {
+    pub cookie: String,
 }
 
-impl<'a> Session<'a> {
-    pub fn new(cookie: &'a str) -> Self {
+impl Session {
+    pub fn new(cookie: String) -> Self {
         Session { cookie }
     }
 }
