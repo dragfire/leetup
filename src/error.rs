@@ -17,6 +17,13 @@ pub enum LeetUpError {
     /// Serde Error
     Serde(#[from] serde_json::Error),
 
+    /// Regex Error
+    Regex(#[from] regex::Error),
+
+    /// Option None Error
+    #[error("Tried to unwrap None")]
+    OptNone,
+
     /// Unexpected Command Error
     #[error("Unexpected command")]
     UnexpectedCommand,

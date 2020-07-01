@@ -23,9 +23,12 @@ pub fn post(
         .default_headers(headers)
         .build()?;
 
-    client
+    let req = client
         .post(url)
         .form(&form)
-        .send()
-        .map_err(LeetUpError::Reqwest)
+        .header("jar", "true")
+        .header("User-Agent", "Leetup");
+    println!("{:?}", req);
+
+    req.send().map_err(LeetUpError::Reqwest)
 }
