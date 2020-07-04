@@ -67,6 +67,17 @@ impl<'a> Leetcode<'a> {
             name,
         }
     }
+    fn cache_session(&mut self, session: Session) -> Result<()> {
+        let session_str = serde_json::to_string(&session)?;
+        self.cache.set("session".to_string(), session_str)?;
+        self.session = Some(session);
+        // remove key `problems`, rebuild problems cache.
+        //
+        // NOTE: cache.remove throws "Key not found" error
+        // so ignore that error if it is thrown.
+        if let Err(_) = self.cache.remove("problems".to_string()) {}
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -314,28 +325,22 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             // filter out all unnecessary cookies
             let session = Session::from_str(&cookie)
                 .map_err(|_| LeetUpError::Any(anyhow!("Unable to parse cookie string")))?;
-            let session_str = serde_json::to_string(&session)?;
-            self.cache.set("session".to_string(), session_str)?;
-
-            // remove key `problems`, rebuild problems cache.
-            //
-            // NOTE: cache.remove throws "Key not found" error
-            // so ignore that error if it is thrown.
-            if let Err(_) = self.cache.remove("problems".to_string()) {}
+            self.cache_session(session)?;
         }
 
         // github login
         if let Some(_) = user.github {
             let session = auth::github_login(self)?;
-            let session_str = serde_json::to_string(&session)?;
-            println!("{}", session_str);
-            self.cache.set("session".to_string(), session_str)?;
-            self.session = Some(session);
-            // remove key `problems`, rebuild problems cache.
-            //
-            // NOTE: cache.remove throws "Key not found" error
-            // so ignore that error if it is thrown.
+            self.cache_session(session)?;
+        }
+
+        if user.logout.is_some() {
+            if let Err(_) = self.cache.remove("session".to_string()) {
+                println!("User not logged in!");
+                return Ok(());
+            }
             if let Err(_) = self.cache.remove("problems".to_string()) {}
+            println!("User logged out!");
         }
 
         Ok(())
@@ -343,5 +348,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     fn cache(&mut self) -> Result<&Cache> {
         panic!();
+    }
+
+    fn name(&self) -> &'a str {
+        self.name
     }
 }

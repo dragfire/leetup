@@ -74,7 +74,6 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         "login={}&password={}&authenticity_token={}",
         user.id, user.pass, auth_token
     );
-    println!("{}", form);
     let mut form = form.as_bytes();
 
     handle.url(&config.urls.github_session_request).unwrap();
