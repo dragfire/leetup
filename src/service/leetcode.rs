@@ -6,11 +6,13 @@ use crate::{
     LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
+use anyhow::anyhow;
 use cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::env;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Leetcode holds all attributes required to implement ServiceProvider trait.
 pub struct Leetcode<'a> {
@@ -50,11 +52,12 @@ impl<'a> Leetcode<'a> {
 
         let mut cache = KvStore::open(data_dir).unwrap();
         let mut session: Option<Session> = None;
-        let cookie = cache.get("cookie".to_string()).unwrap();
+        let session_val = cache.get("session".to_string()).unwrap();
 
         // Set session if the user is logged in
-        if let Some(val) = cookie {
-            session = Some(Session::new(val));
+        if let Some(ref val) = session_val {
+            session =
+                Some(serde_json::from_str::<Session>(val).expect("Session format not correct"));
         }
 
         Leetcode {
@@ -138,8 +141,9 @@ pub fn fetch_all_problems<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Li
     let session = provider.session();
     let mut headers = reqwest::header::HeaderMap::new();
     if let Some(sess) = session {
-        let cookie = sess.cookie.parse().unwrap();
-        headers.insert("Cookie", cookie);
+        let sess: Session = sess.clone();
+        let s: String = sess.into();
+        headers.insert("Cookie", s.parse().unwrap());
     }
     fetch::get(url, headers)?
         .json::<ListResponse>()
@@ -307,7 +311,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 cookie = String::from(cookie.trim_end());
             }
 
-            self.cache.set("cookie".to_string(), cookie)?;
+            // filter out all unnecessary cookies
+            let session = Session::from_str(&cookie)
+                .map_err(|_| LeetUpError::Any(anyhow!("Unable to parse cookie string")))?;
+            let session_str = serde_json::to_string(&session)?;
+            self.cache.set("session".to_string(), session_str)?;
 
             // remove key `problems`, rebuild problems cache.
             //
@@ -318,7 +326,16 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         // github login
         if let Some(_) = user.github {
-            auth::github_login(self)?;
+            let session = auth::github_login(self)?;
+            let session_str = serde_json::to_string(&session)?;
+            println!("{}", session_str);
+            self.cache.set("session".to_string(), session_str)?;
+            self.session = Some(session);
+            // remove key `problems`, rebuild problems cache.
+            //
+            // NOTE: cache.remove throws "Key not found" error
+            // so ignore that error if it is thrown.
+            if let Err(_) = self.cache.remove("problems".to_string()) {}
         }
 
         Ok(())
