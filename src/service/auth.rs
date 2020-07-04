@@ -4,7 +4,11 @@ use crate::{
     LeetUpError, Result,
 };
 use regex::Regex;
-use reqwest::header;
+use reqwest::{
+    blocking::{self, Client, Request},
+    header, redirect,
+};
+use std::borrow::Borrow;
 use std::io::{BufWriter, Write};
 
 #[derive(Debug)]
@@ -42,55 +46,41 @@ fn capture_value(i: usize, re: Regex, text: &str) -> Result<String> {
         .ok_or(LeetUpError::OptNone)
 }
 
-fn parse_github_request(config: &Config, res: reqwest::blocking::Response) -> Result<()> {
-    let text = res.text()?;
-    let auth_token_re = Regex::new("name=\"authenticity_token\" value=\"(.*?)\"")?;
-    let req_field_re = Regex::new("name=\"required_field_(.*?)\"")?;
-    let ts_re = Regex::new("name=\"timestamp\" value=\"(.*?)\"")?;
-    let ts_secret_re = Regex::new("name=\"timestamp_secret\" value=\"(.*?)\"")?;
-
-    let auth_token = &capture_value(1, auth_token_re, &text)?;
-    let mut req_field = capture_value(1, req_field_re, &text)?;
-    let ts = &capture_value(1, ts_re, &text)?;
-    let ts_secret = &capture_value(1, ts_secret_re, &text)?;
-    let user = User::get_from_stdin();
-
-    req_field = "required_field_".to_string() + &req_field;
-    let form = vec![
-        ("login", user.id.as_str()),
-        ("password", user.pass.as_str()),
-        ("authenticity_token", auth_token),
-        ("commit", "Sign in"),
-        ("webauthn-support", "unknown"),
-        ("webauthn-iuvpaa-support", "unknown"),
-        ("return_to", ""),
-        (req_field.as_str(), ""),
-        ("timestamp", ts),
-        ("timestamp_secret", ts_secret),
-    ];
-    let mut headers = header::HeaderMap::new();
-    headers.insert(
-        "Content-Type",
-        "application/x-www-form-urlencoded".parse().unwrap(),
-    );
-    println!("{:?}", form);
-
-    let res = fetch::post(&config.urls.github_session_request, headers, form)?;
-    println!("{:?}", res);
-
-    Ok(())
-}
-
 pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<()> {
     let config = provider.config()?;
-    let mut headers = header::HeaderMap::new();
-    headers.insert("jar", "true".parse().unwrap());
-    let client: reqwest::blocking::Client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
+    let custom = redirect::Policy::custom(|attempt| {
+        eprintln!("{}, Location: {:?}", attempt.status(), attempt.url());
+        redirect::Policy::default().redirect(attempt)
+    });
+    let client: Client = Client::builder()
+        .redirect(custom)
+        .cookie_store(true)
+        .referer(true)
         .build()?;
 
     let res = client.get(&config.urls.github_login_request).send()?;
-    println!("{:?}", res);
+    let text = res.text()?;
+
+    let auth_token_re = Regex::new("name=\"authenticity_token\" value=\"(.*?)\"")?;
+    let auth_token = &capture_value(1, auth_token_re, &text)?;
+    let user = User::get_from_stdin();
+
+    let form = &[
+        ("login", "dragfire"),
+        ("password", "d3v@github"),
+        ("authenticity_token", auth_token),
+    ];
+
+    client
+        .post(&config.urls.github_session_request)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .form(form)
+        .send()?;
+
+    let req = client.get(&config.urls.github_login).build()?;
+    println!("{:?}", req.headers());
+    let res = client.execute(req)?;
+    println!("{:?}", res.cookies().collect::<Vec<_>>());
 
     Ok(())
 }
