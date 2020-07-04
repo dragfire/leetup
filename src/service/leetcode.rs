@@ -1,5 +1,4 @@
 use crate::{
-    cache::kvstore::{self, KvStore},
     cmd::{Command, List, OrderBy, Query, User},
     fetch,
     icon::Icon,
@@ -7,6 +6,7 @@ use crate::{
     LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
+use cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::env;
@@ -35,6 +35,7 @@ impl<'a> Leetcode<'a> {
             base: "https://leetcode.com".to_string(),
             api: "https://leetcode.com/api".to_string(),
             problems_all: "https://leetcode.com/api/problems/all".to_string(),
+            github_login: "https://leetcode.com/accounts/github/login/?next=%2F".to_string(),
             github_login_request: "https://github.com/login".to_string(),
             github_session_request: "https://github.com/session".to_string(),
         };

@@ -60,6 +60,7 @@ pub struct Urls {
     pub base: String,
     pub api: String,
     pub problems_all: String,
+    pub github_login: String,
     pub github_login_request: String,
     pub github_session_request: String,
 }
