@@ -34,6 +34,10 @@ pub struct User {
     /// Login using github
     #[structopt(short, long)]
     pub github: Option<Option<String>>,
+
+    /// Logout user
+    #[structopt(short, long)]
+    pub logout: Option<Option<String>>,
 }
 
 #[derive(Debug, StructOpt)]

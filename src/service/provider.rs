@@ -44,6 +44,7 @@ pub trait ServiceProvider<'a> {
     fn problem_submit(&self) -> Result<()>;
     fn process_auth(&mut self, user: User) -> Result<()>;
     fn cache(&mut self) -> Result<&Cache>;
+    fn name(&self) -> &'a str;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
