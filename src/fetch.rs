@@ -1,16 +1,15 @@
 use crate::{LeetUpError, Result};
+use request::{Client, ClientBuilder, List, Request, RequestBuilder, Response};
 use reqwest::{
     self,
     header::{HeaderMap, HeaderValue},
 };
 
 /// Make a GET request
-pub fn get(url: &str, headers: HeaderMap) -> Result<reqwest::blocking::Response> {
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
-        .build()?;
+pub fn get(url: &str, headers: List) -> Result<Response> {
+    let client = Client::builder().default_headers(headers).build();
 
-    client.get(url).send().map_err(LeetUpError::Reqwest)
+    Ok(client.get(url).perform())
 }
 
 /// Make a POST request
