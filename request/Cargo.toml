@@ -1,0 +1,11 @@
+[package]
+name = "request"
+version = "0.1.0"
+authors = ["dragfire <asem.devajit@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+curl = "0.4.30"
+bytes = "0.5.5"

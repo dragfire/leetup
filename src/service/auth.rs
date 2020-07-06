@@ -97,10 +97,10 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     handle.get(true).unwrap();
     handle.perform().unwrap();
 
-    let mut headers = Vec::new();
     handle.url(&config.urls.github_login).unwrap();
     handle.follow_location(true).unwrap();
     handle.get(true).unwrap();
+    let mut headers = Vec::new();
     {
         let mut transfer = handle.transfer();
         transfer
