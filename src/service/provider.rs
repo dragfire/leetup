@@ -59,7 +59,7 @@ impl FromStr for Session {
 impl From<Session> for String {
     fn from(session: Session) -> Self {
         let mut s = String::new();
-        s.push_str(&format!("{}={};", "LEETCODE_SESSION", session.id));
+        s.push_str(&format!("{}={}; ", "LEETCODE_SESSION", session.id));
         s.push_str(&format!("{}={}", "csrftoken", session.csrf));
 
         s

@@ -9,7 +9,6 @@ description = "Leetcode cli"
 cache = { path = "./cache" }
 clap = "2.33.1"
 structopt = "0.3.15"
-reqwest = { version = "0.10.6", features = ["blocking", "json", "cookies"] }
 request = { path = "./request" }
 thiserror = "1.0.20"
 anyhow = "1.0.31"

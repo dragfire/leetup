@@ -2,8 +2,10 @@ use bytes::Bytes;
 use curl::easy::Easy;
 pub use curl::easy::List;
 use serde::de::DeserializeOwned;
+use std::cell::RefCell;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Method {
@@ -65,13 +67,13 @@ impl Request {
     }
 }
 
-pub struct RequestBuilder {
-    client: Client,
+pub struct RequestBuilder<'a> {
+    client: Rc<&'a Client>,
     request: Request,
 }
 
-impl RequestBuilder {
-    pub fn new(client: Client, request: Request) -> Self {
+impl<'a> RequestBuilder<'a> {
+    pub fn new(client: Rc<&'a Client>, request: Request) -> Self {
         RequestBuilder { client, request }
     }
 
@@ -83,8 +85,8 @@ impl RequestBuilder {
         self
     }
 
-    pub fn body(mut self, body: Bytes) -> Self {
-        *self.request.body_mut().unwrap() = body;
+    pub fn body<T: Into<Bytes>>(mut self, body: T) -> Self {
+        self.request.body = Some(body.into());
         self
     }
 
@@ -93,7 +95,8 @@ impl RequestBuilder {
     }
 
     pub fn perform(mut self) -> Response {
-        self.client.perform(self.request)
+        let handle = Rc::get_mut(&mut self.client).unwrap();
+        handle.perform(self.request)
     }
 }
 
@@ -121,26 +124,36 @@ impl ClientBuilder {
         self
     }
 
+    pub fn cookie_jar(mut self, enabled: bool) -> Self {
+        self.cookie_jar = enabled;
+        self
+    }
+
     pub fn redirect(mut self, enabled: bool) -> Self {
         self.redirect = enabled;
         self
     }
 
-    pub fn build(self) -> Client {
+    pub fn build(mut self) -> Client {
         let mut handle = Easy::new();
         if self.cookie_jar {
-            handle.cookie_jar("cookie").unwrap();
+            let cookie_path = "data";
+            handle.cookie_jar(cookie_path).unwrap();
+            self.headers.append("jar: true").unwrap();
         }
 
         handle.http_headers(self.headers).unwrap();
+        handle.useragent("Leetup").unwrap();
         handle.follow_location(self.redirect).unwrap();
 
-        Client { handle }
+        Client {
+            handle: RefCell::new(handle),
+        }
     }
 }
 
 pub struct Client {
-    handle: Easy,
+    handle: RefCell<Easy>,
 }
 
 impl Client {
@@ -148,39 +161,54 @@ impl Client {
         ClientBuilder::new()
     }
 
-    pub fn get<R: AsRef<Path>>(self, url: R) -> RequestBuilder {
-        self.request(Method::Get, url)
+    pub fn get<R: AsRef<Path>>(&self, url: R) -> RequestBuilder {
+        let rc_client = Rc::new(self);
+        Client::request(rc_client, Method::Get, url)
     }
 
-    pub fn post<R: AsRef<Path>>(self, url: R) -> RequestBuilder {
-        self.request(Method::Post, url)
+    pub fn post<R: AsRef<Path>>(&self, url: R) -> RequestBuilder {
+        let rc_client = Rc::new(self);
+        Client::request(rc_client, Method::Get, url)
     }
 
-    pub fn put<R: AsRef<Path>>(self, url: R) -> RequestBuilder {
-        self.request(Method::Put, url)
+    pub fn put<R: AsRef<Path>>(&self, url: R) -> RequestBuilder {
+        let rc_client = Rc::new(self);
+        Client::request(rc_client, Method::Get, url)
     }
 
-    pub fn request<R: AsRef<Path>>(self, method: Method, url: R) -> RequestBuilder {
+    pub fn request<R: AsRef<Path>>(
+        rc_client: Rc<&Client>,
+        method: Method,
+        url: R,
+    ) -> RequestBuilder {
         let req = Request::new(method, url);
-        RequestBuilder::new(self, req)
+        let client = Rc::clone(&rc_client);
+        RequestBuilder::new(client, req)
     }
 
-    pub fn perform(&mut self, request: Request) -> Response {
+    pub fn cookies(&self) -> Result<List, curl::Error> {
+        self.handle.borrow_mut().cookies()
+    }
+
+    pub fn perform(&self, request: Request) -> Response {
         let mut headers = Vec::new();
         let mut buf = Vec::new();
-        self.handle.url(request.url.to_str().unwrap()).unwrap();
+        let mut handle = self.handle.borrow_mut();
+        handle.url(request.url.to_str().unwrap()).unwrap();
 
         match request.method() {
-            Method::Get => self.handle.get(true).unwrap(),
-            Method::Post => self.handle.post(true).unwrap(),
+            Method::Get => handle.get(true).unwrap(),
+            Method::Post => handle.post(true).unwrap(),
             _ => (),
         }
 
         {
-            let mut transfer = self.handle.transfer();
-            transfer
+            let mut transfer = handle.transfer();
+            if let Err(e) = transfer
                 .read_function(|buf| Ok(request.body().unwrap().as_ref().read(buf).unwrap_or(0)))
-                .unwrap();
+            {
+                println!("{:?}", e);
+            }
             transfer
                 .write_function(|data| {
                     buf.extend_from_slice(data);
@@ -202,7 +230,7 @@ impl Client {
             Some(Bytes::copy_from_slice(&buf))
         };
 
-        let status = self.handle.response_code().unwrap();
+        let status = handle.response_code().unwrap();
 
         Response::new(headers, body, status)
     }
@@ -224,6 +252,10 @@ impl Response {
         }
     }
 
+    pub fn status(&self) -> u32 {
+        self.status
+    }
+
     pub fn text(&self) -> Option<&str> {
         std::str::from_utf8(self.body.as_ref().unwrap()).map_or_else(|_| None, |text| Some(text))
     }
@@ -235,10 +267,66 @@ impl Response {
 
 #[test]
 fn test_get_post_req() {
-    let url = "https://github.com";
-    let mut headers = List::new();
-    headers.append("jar: true").unwrap();
-    let client = Client::builder().default_headers(headers).build();
+    use regex::Regex;
+    let url = "https://github.com/login";
+    let client = Client::builder().cookie_jar(true).redirect(true).build();
     let res = client.get(url).perform();
-    println!("{:?}", res.text().unwrap());
+    let text = res.text().unwrap();
+    println!("{}", res.status());
+
+    let auth_token_re = Regex::new("name=\"authenticity_token\" value=\"(.*?)\"").unwrap();
+    let auth_token = &capture_value(1, auth_token_re, text);
+
+    let form = format!(
+        "login=dragfire&password=d3v@github&authenticity_token={}",
+        auth_token
+    );
+
+    fn capture_value(i: usize, re: Regex, text: &str) -> String {
+        let caps = re.captures(text).unwrap();
+        caps.get(i).map(|m| String::from(m.as_str())).unwrap()
+    }
+
+    let url = "https://github.com/session";
+    let res = client
+        .post(url)
+        .body(form)
+        .header("Content-Type: application/x-www-form-urlencoded")
+        .perform();
+
+    println!("{}", res.status());
+
+    let url = "https://github.com";
+    let res = client.get(url).perform();
+    println!("{}", res.status());
+
+    let url = "https://leetcode.com/accounts/github/login/?next=%2F";
+    let res = client.get(url).perform();
+    println!("{}", res.status());
+    let cookies = client.cookies().unwrap();
+    let mut cookie_raw = String::new();
+    for cookie in cookies.iter() {
+        let mut cookie = std::str::from_utf8(cookie).unwrap().rsplit("\t");
+        let val = cookie.next().unwrap();
+        let name = cookie.next().unwrap();
+        match name {
+            "LEETCODE_SESSION" => {
+                cookie_raw.push_str(&format!("{}={};", "LEETCODE_SESSION", val));
+            }
+            "csrftoken" => cookie_raw.push_str(&format!("{}={}; ", "csrftoken", val)),
+            _ => (),
+        }
+    }
+
+    // remove trailing semi-colon
+    cookie_raw.pop();
+    println!("COOKIE: {}", cookie_raw);
+}
+
+#[test]
+fn test_get_all_problems() {
+    let url = "https://leetcode.com/api/problems/all";
+    let client = Client::builder().redirect(true).build();
+    let res = client.get(url).perform();
+    assert_eq!(200, res.status());
 }

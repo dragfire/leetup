@@ -151,11 +151,13 @@ pub fn fetch_all_problems<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Li
     let url = &provider.config()?.urls.problems_all;
     let session = provider.session();
     let mut headers = request::List::new();
+
     if let Some(sess) = session {
         let sess: Session = sess.clone();
         let s: String = sess.into();
         headers.append(&format!("Cookie: {}", s)).unwrap();
     }
+
     fetch::get(url, headers)?
         .json::<ListResponse>()
         .map_err(LeetUpError::Serde)
