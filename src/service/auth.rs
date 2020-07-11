@@ -14,10 +14,6 @@ struct User {
 
 impl User {
     fn get_from_stdin() -> Self {
-        return User {
-            id: "dragfire".to_string(),
-            pass: "d3v@github".to_string(),
-        };
         let mut out = BufWriter::new(std::io::stdout());
         let stdin = std::io::stdin();
         let mut id = String::new();
@@ -44,7 +40,7 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     let config = provider.config()?;
     let client = request::Client::builder()
         .cookie_jar(true)
-        .redirect(true)
+        .redirect(false)
         .build();
     let res = client.get(&config.urls.github_login_request).perform();
     let text = res.text().unwrap();
@@ -63,6 +59,13 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         .body(form)
         .header("Content-Type: application/x-www-form-urlencoded")
         .perform();
+
+    let redirect_url = client.redirect_url();
+    if let Some(ref url) = redirect_url {
+        let _res = client.get(url).perform();
+    }
+
+    client.redirect(true).unwrap();
 
     let _res = client.get(&config.urls.github_login).perform();
 
@@ -85,7 +88,6 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     cookie_raw.pop();
 
     let session = Session::from_str(&cookie_raw).unwrap();
-    println!("{:?}", session);
 
     Ok(session)
 }

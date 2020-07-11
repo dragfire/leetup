@@ -190,6 +190,24 @@ impl Client {
         self.handle.borrow_mut().cookies()
     }
 
+    pub fn redirect(&self, enabled: bool) -> Result<(), curl::Error> {
+        self.handle.borrow_mut().follow_location(enabled)
+    }
+
+    pub fn redirect_url(&self) -> Option<String> {
+        let mut handle = self.handle.borrow_mut();
+        let rurl = handle.redirect_url();
+        if let Ok(res) = rurl {
+            res.map(String::from)
+        } else {
+            None
+        }
+    }
+
+    pub fn url_encode<T: AsRef<[u8]>>(&self, data: T) -> String {
+        self.handle.borrow_mut().url_encode(data.as_ref())
+    }
+
     pub fn perform(&self, request: Request) -> Response {
         let mut headers = Vec::new();
         let mut buf = Vec::new();
@@ -203,11 +221,17 @@ impl Client {
         }
 
         {
+            if let Some(body) = request.body() {
+                handle.post_field_size(body.len() as u64).unwrap();
+            }
             let mut transfer = handle.transfer();
-            if let Err(e) = transfer
-                .read_function(|buf| Ok(request.body().unwrap().as_ref().read(buf).unwrap_or(0)))
-            {
-                println!("{:?}", e);
+
+            if request.body().is_some() {
+                transfer
+                    .read_function(|buf| {
+                        Ok(request.body().unwrap().as_ref().read(buf).unwrap_or(0))
+                    })
+                    .unwrap();
             }
             transfer
                 .write_function(|data| {
@@ -252,6 +276,10 @@ impl Response {
         }
     }
 
+    pub fn headers(&self) -> &Vec<String> {
+        &self.headers
+    }
+
     pub fn status(&self) -> u32 {
         self.status
     }
@@ -269,17 +297,17 @@ impl Response {
 fn test_get_post_req() {
     use regex::Regex;
     let url = "https://github.com/login";
-    let client = Client::builder().cookie_jar(true).redirect(true).build();
+    let client = Client::builder().cookie_jar(true).redirect(false).build();
     let res = client.get(url).perform();
     let text = res.text().unwrap();
-    println!("{}", res.status());
+    // println!("{}", res.status());
 
     let auth_token_re = Regex::new("name=\"authenticity_token\" value=\"(.*?)\"").unwrap();
     let auth_token = &capture_value(1, auth_token_re, text);
 
     let form = format!(
-        "login=dragfire&password=d3v@github&authenticity_token={}",
-        auth_token
+        "login=tom&password=thumb&authenticity_token={}",
+        client.url_encode(auth_token.as_bytes())
     );
 
     fn capture_value(i: usize, re: Regex, text: &str) -> String {
@@ -294,21 +322,22 @@ fn test_get_post_req() {
         .header("Content-Type: application/x-www-form-urlencoded")
         .perform();
 
-    println!("{}", res.status());
+    // println!("{}", res.status());
 
-    let url = "https://github.com";
-    let res = client.get(url).perform();
-    println!("{}", res.status());
+    let res = client.get(&client.redirect_url()).perform();
+    // println!("{:?} {}", res.headers(), res.status());
 
     let url = "https://leetcode.com/accounts/github/login/?next=%2F";
+    client.redirect(true).unwrap();
     let res = client.get(url).perform();
-    println!("{}", res.status());
+
     let cookies = client.cookies().unwrap();
     let mut cookie_raw = String::new();
     for cookie in cookies.iter() {
         let mut cookie = std::str::from_utf8(cookie).unwrap().rsplit("\t");
         let val = cookie.next().unwrap();
         let name = cookie.next().unwrap();
+        println!("{:20}  {}", name, val);
         match name {
             "LEETCODE_SESSION" => {
                 cookie_raw.push_str(&format!("{}={};", "LEETCODE_SESSION", val));
@@ -320,7 +349,7 @@ fn test_get_post_req() {
 
     // remove trailing semi-colon
     cookie_raw.pop();
-    println!("COOKIE: {}", cookie_raw);
+    // println!("COOKIE: {}", cookie_raw);
 }
 
 #[test]
