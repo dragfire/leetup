@@ -1,34 +1,12 @@
-use crate::{LeetUpError, Result};
-use reqwest::{
-    self,
-    header::{HeaderMap, HeaderValue},
-};
+use crate::Result;
+use request::{Client, List, Response};
 
 /// Make a GET request
-pub fn get(url: &str, headers: HeaderMap) -> Result<reqwest::blocking::Response> {
-    let client = reqwest::blocking::Client::builder()
+pub fn get(url: &str, headers: List) -> Result<Response> {
+    let client = Client::builder()
         .default_headers(headers)
-        .build()?;
+        .redirect(true)
+        .build();
 
-    client.get(url).send().map_err(LeetUpError::Reqwest)
-}
-
-/// Make a POST request
-pub fn post(
-    url: &str,
-    headers: HeaderMap<HeaderValue>,
-    form: Vec<(&str, &str)>,
-) -> Result<reqwest::blocking::Response> {
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
-        .build()?;
-
-    let req = client
-        .post(url)
-        .form(&form)
-        .header("jar", "true")
-        .header("User-Agent", "Leetup");
-    println!("{:?}", req);
-
-    req.send().map_err(LeetUpError::Reqwest)
+    Ok(client.get(url).perform())
 }

@@ -8,9 +8,6 @@ pub enum LeetUpError {
     /// Any Error
     Any(#[from] anyhow::Error),
 
-    /// Reqwest Error
-    Reqwest(#[from] reqwest::Error),
-
     /// IO Error
     Io(#[from] io::Error),
 

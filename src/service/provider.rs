@@ -8,33 +8,6 @@ use std::str::FromStr;
 
 /// ServiceProvider trait provides all the functionalities required to solve problems
 /// on any type of Online Judge through leetup CLI.
-/// ```
-///     trait ServiceProvider {
-///         fn session() -> Result<Session>;
-///         fn config() -> Result<Config>;
-///         fn list_problems(list: cmd::List) -> Result<()>;
-///         fn pick_problem(pick: cmd::Pick) -> Result<()>;
-///         fn problem_test() -> Result<()>;
-///         fn problem_submit() -> Result<()>;
-///         fn login() -> Result<()>;
-///         fn logout() -> Result<()>;
-///         fn cache() -> Result<Cache>;
-///     }
-///
-///     impl ServiceProvider for Leetcode {
-///     }
-///
-///     impl ServiceProvider for Lintcode {
-///     }
-///
-///     impl ServiceProvider for Cses {
-///     }
-///
-///
-///     leet_provider.list_problems();
-///     lint_provider.list_problems();
-///
-/// ```
 pub trait ServiceProvider<'a> {
     fn session(&self) -> Option<&Session>;
     fn config(&self) -> Result<&Config>;
@@ -86,7 +59,7 @@ impl FromStr for Session {
 impl From<Session> for String {
     fn from(session: Session) -> Self {
         let mut s = String::new();
-        s.push_str(&format!("{}={};", "LEETCODE_SESSION", session.id));
+        s.push_str(&format!("{}={}; ", "LEETCODE_SESSION", session.id));
         s.push_str(&format!("{}={}", "csrftoken", session.csrf));
 
         s

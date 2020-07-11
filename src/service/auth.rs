@@ -2,10 +2,8 @@ use crate::{
     service::{ServiceProvider, Session},
     LeetUpError, Result,
 };
-use curl::easy::{Easy, List};
 use regex::Regex;
-use std::fs;
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufWriter, Write};
 use std::str::FromStr;
 
 #[derive(Debug)]
@@ -40,79 +38,38 @@ fn capture_value(i: usize, re: Regex, text: &str) -> Result<String> {
 
 pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session> {
     let config = provider.config()?;
-    let mut handle = Easy::new();
+    let client = request::Client::builder()
+        .cookie_jar(true)
+        .redirect(false)
+        .build();
+    let res = client.get(&config.urls.github_login_request).perform();
+    let text = res.text().unwrap();
 
-    let cookie_path = "data";
-    fs::create_dir_all(cookie_path).unwrap();
-
-    handle.cookie_jar(cookie_path).unwrap();
-    let mut list = List::new();
-    list.append("jar: true").unwrap();
-    handle.http_headers(list).unwrap();
-
-    // get auth_token from github
-    let mut buf = Vec::new();
-    handle.url(&config.urls.github_login_request).unwrap();
-    {
-        let mut transfer = handle.transfer();
-        transfer
-            .write_function(|data| {
-                buf.extend_from_slice(data);
-                Ok(data.len())
-            })
-            .unwrap();
-        transfer.perform().unwrap();
-    }
-
-    let text = std::str::from_utf8(&buf).unwrap();
-    let auth_token_re = Regex::new("name=\"authenticity_token\" value=\"(.*?)\"")?;
+    let auth_token_re = Regex::new("name=\"authenticity_token\" value=\"(.*?)\"").unwrap();
     let auth_token = &capture_value(1, auth_token_re, text)?;
-    let auth_token = handle.url_encode(auth_token.as_bytes());
     let user = User::get_from_stdin();
 
     let form = format!(
         "login={}&password={}&authenticity_token={}",
         user.id, user.pass, auth_token
     );
-    let mut form = form.as_bytes();
 
-    handle.url(&config.urls.github_session_request).unwrap();
-    let mut list = List::new();
-    list.append("Content-Type: application/x-www-form-urlencoded")
-        .unwrap();
-    handle.http_headers(list).unwrap();
-    handle.post(true).unwrap();
-    handle.post_field_size(form.len() as u64).unwrap();
-    {
-        let mut transfer = handle.transfer();
-        transfer
-            .read_function(|buf| Ok(form.read(buf).unwrap_or(0)))
-            .unwrap();
-        transfer.perform().unwrap();
+    let _res = client
+        .post(&config.urls.github_session_request)
+        .body(form)
+        .header("Content-Type: application/x-www-form-urlencoded")
+        .perform();
+
+    let redirect_url = client.redirect_url();
+    if let Some(ref url) = redirect_url {
+        let _res = client.get(url).perform();
     }
 
-    let redirect_url = handle.redirect_url();
-    let redirect_url = redirect_url.unwrap().unwrap().to_string();
-    handle.url(&redirect_url).unwrap();
-    handle.get(true).unwrap();
-    handle.perform().unwrap();
+    client.redirect(true).unwrap();
 
-    let mut headers = Vec::new();
-    handle.url(&config.urls.github_login).unwrap();
-    handle.follow_location(true).unwrap();
-    handle.get(true).unwrap();
-    {
-        let mut transfer = handle.transfer();
-        transfer
-            .header_function(|header| {
-                headers.push(std::str::from_utf8(header).unwrap().to_string());
-                true
-            })
-            .unwrap();
-        transfer.perform().unwrap();
-    }
+    let _res = client.get(&config.urls.github_login).perform();
 
-    let cookies = handle.cookies().unwrap();
+    let cookies = client.cookies().unwrap();
     let mut cookie_raw = String::new();
     for cookie in cookies.iter() {
         let mut cookie = std::str::from_utf8(cookie).unwrap().rsplit("\t");
