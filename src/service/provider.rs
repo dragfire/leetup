@@ -70,6 +70,7 @@ impl From<Session> for String {
 pub struct Urls {
     pub base: String,
     pub api: String,
+    pub graphql: String,
     pub problems_all: String,
     pub github_login: String,
     pub github_login_request: String,

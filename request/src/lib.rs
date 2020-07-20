@@ -22,6 +22,8 @@ pub struct Request {
     method: Method,
     url: PathBuf,
     headers: List,
+    cookie: Option<String>,
+    referer: Option<String>,
     body: Option<Bytes>,
 }
 
@@ -32,6 +34,8 @@ impl Request {
             url: url.as_ref().to_owned(),
             headers: List::new(),
             body: None,
+            referer: None,
+            cookie: None,
         }
     }
 
@@ -58,6 +62,15 @@ impl Request {
     pub fn headers_mut(&mut self) -> &mut List {
         &mut self.headers
     }
+
+    pub fn cookie(&mut self, cookie: String) {
+        self.cookie = Some(cookie);
+    }
+
+    pub fn referer(&mut self, referer: String) {
+        self.referer = Some(referer);
+    }
+
     pub fn body(&self) -> Option<&Bytes> {
         self.body.as_ref()
     }
@@ -85,6 +98,16 @@ impl<'a> RequestBuilder<'a> {
         self
     }
 
+    pub fn referer(mut self, referer: String) -> Self {
+        self.request.referer(referer);
+        self
+    }
+
+    pub fn cookie(mut self, cookie: String) -> Self {
+        self.request.cookie(cookie);
+        self
+    }
+
     pub fn body<T: Into<Bytes>>(mut self, body: T) -> Self {
         self.request.body = Some(body.into());
         self
@@ -105,6 +128,7 @@ pub struct ClientBuilder {
     headers: List,
     cookie_jar: bool,
     redirect: bool,
+    http2: bool,
 }
 
 impl ClientBuilder {
@@ -116,6 +140,7 @@ impl ClientBuilder {
             cookie_jar: false,
             headers,
             redirect: false,
+            http2: false,
         }
     }
 
@@ -134,12 +159,21 @@ impl ClientBuilder {
         self
     }
 
+    pub fn http2(mut self, enabled: bool) -> Self {
+        self.http2 = enabled;
+        self
+    }
+
     pub fn build(mut self) -> Client {
         let mut handle = Easy::new();
         if self.cookie_jar {
             let cookie_path = "data";
             handle.cookie_jar(cookie_path).unwrap();
             self.headers.append("jar: true").unwrap();
+        }
+
+        if self.http2 {
+            handle.http_version(curl::easy::HttpVersion::V2).unwrap();
         }
 
         handle.http_headers(self.headers).unwrap();
@@ -168,12 +202,12 @@ impl Client {
 
     pub fn post<R: AsRef<Path>>(&self, url: R) -> RequestBuilder {
         let rc_client = Rc::new(self);
-        Client::request(rc_client, Method::Get, url)
+        Client::request(rc_client, Method::Post, url)
     }
 
     pub fn put<R: AsRef<Path>>(&self, url: R) -> RequestBuilder {
         let rc_client = Rc::new(self);
-        Client::request(rc_client, Method::Get, url)
+        Client::request(rc_client, Method::Put, url)
     }
 
     pub fn request<R: AsRef<Path>>(
@@ -219,6 +253,24 @@ impl Client {
             Method::Post => handle.post(true).unwrap(),
             _ => (),
         }
+
+        if let Some(ref referer) = request.referer {
+            handle.referer(referer).unwrap();
+        }
+
+        if let Some(ref cookie) = request.cookie {
+            println!("{}", cookie);
+            handle.cookie(cookie).unwrap();
+        }
+
+        let mut req_headers = List::new();
+        for header in request.headers() {
+            req_headers
+                .append(std::str::from_utf8(header).unwrap())
+                .unwrap();
+        }
+
+        handle.http_headers(req_headers).unwrap();
 
         {
             if let Some(body) = request.body() {
@@ -293,8 +345,7 @@ impl Response {
     }
 }
 
-#[test]
-fn test_get_post_req() {
+fn get_session() -> String {
     use regex::Regex;
     let url = "https://github.com/login";
     let client = Client::builder().cookie_jar(true).redirect(false).build();
@@ -306,7 +357,7 @@ fn test_get_post_req() {
     let auth_token = &capture_value(1, auth_token_re, text);
 
     let form = format!(
-        "login=tom&password=thumb&authenticity_token={}",
+        "login=tom&password=thumbub&authenticity_token={}",
         client.url_encode(auth_token.as_bytes())
     );
 
@@ -324,7 +375,7 @@ fn test_get_post_req() {
 
     // println!("{}", res.status());
 
-    let res = client.get(&client.redirect_url()).perform();
+    let res = client.get(&client.redirect_url().unwrap()).perform();
     // println!("{:?} {}", res.headers(), res.status());
 
     let url = "https://leetcode.com/accounts/github/login/?next=%2F";
@@ -337,7 +388,7 @@ fn test_get_post_req() {
         let mut cookie = std::str::from_utf8(cookie).unwrap().rsplit("\t");
         let val = cookie.next().unwrap();
         let name = cookie.next().unwrap();
-        println!("{:20}  {}", name, val);
+        // println!("{:20}  {}", name, val);
         match name {
             "LEETCODE_SESSION" => {
                 cookie_raw.push_str(&format!("{}={};", "LEETCODE_SESSION", val));
@@ -350,6 +401,12 @@ fn test_get_post_req() {
     // remove trailing semi-colon
     cookie_raw.pop();
     // println!("COOKIE: {}", cookie_raw);
+    cookie_raw
+}
+
+#[test]
+fn test_get_post_req() {
+    println!("{}", get_session());
 }
 
 #[test]
@@ -358,4 +415,64 @@ fn test_get_all_problems() {
     let client = Client::builder().redirect(true).build();
     let res = client.get(url).perform();
     assert_eq!(200, res.status());
+}
+
+#[test]
+fn test_graphql() {
+    use serde_json::json;
+    struct Problem {
+        slug: String,
+    }
+
+    let problem = Problem {
+        slug: "longest-substring-without-repeating-characters".to_string(),
+    };
+    let graphql = "https://leetcode.com/graphql";
+    let query = r#"
+    query getQuestionDetail($titleSlug: String!) {
+     question(titleSlug: $titleSlug) {
+       content
+       stats
+       likes
+       dislikes
+       codeDefinition
+       sampleTestCase
+       enableRunCode
+       metaData
+       translatedContent
+     }
+    }
+    "#;
+    let base = "https://leetcode.com";
+    let body: serde_json::value::Value = json!({
+        "query": query,
+        "variables": json!({
+            "titleSlug": problem.slug
+        }),
+        "operationName": "getQuestionDetail"
+    });
+
+    let client = Client::builder().http2(true).redirect(true).build();
+    let body = body.to_string();
+    let cookie = get_session();
+    let cookie_header = cookie.to_string();
+    let cookie = cookie.split(" ").collect::<Vec<&str>>();
+    let mut csrf = cookie[0].rsplit("=").next().unwrap().to_string();
+    csrf.pop();
+
+    let res = client
+        .post(graphql)
+        .referer(String::from(
+            "https://leetcode.com/problems/longest-substring-without-repeating-characters/",
+        ))
+        .cookie(cookie_header.to_string())
+        .header("Host: leetcode.com")
+        .header(&format!("x-csrftoken: {}", csrf))
+        .header("X-Requested-With: XMLHttpRequest")
+        .header("Content-Type: application/json")
+        .header("Origin: https://leetcode.com")
+        .body(body)
+        .perform();
+    let data = res.json::<serde_json::value::Value>().unwrap();
+    println!("{:?}", data);
 }

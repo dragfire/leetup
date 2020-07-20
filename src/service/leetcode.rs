@@ -36,6 +36,7 @@ impl<'a> Leetcode<'a> {
         let urls = Urls {
             base: "https://leetcode.com".to_string(),
             api: "https://leetcode.com/api".to_string(),
+            graphql: "https://leetcode.com/graphql".to_string(),
             problems_all: "https://leetcode.com/api/problems/all".to_string(),
             github_login: "https://leetcode.com/accounts/github/login/?next=%2F".to_string(),
             github_login_request: "https://github.com/login".to_string(),
@@ -299,7 +300,25 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     fn pick_problem(&self, _pick: Command) -> Result<()> {
-        panic!();
+        let config = self.config()?;
+        let query = r#"
+            query getQuestionDetail($titleSlug: String!) {
+             question(titleSlug: $titleSlug) {
+               content
+               stats
+               likes
+               dislikes
+               codeDefinition
+               sampleTestCase
+               enableRunCode
+               metaData
+               translatedContent
+             }
+            }
+        "#;
+        let client = request::Client::builder().redirect(true).build();
+        let res = client.post(&config.urls.graphql).body(query).perform();
+        Ok(())
     }
 
     fn problem_test(&self) -> Result<()> {
