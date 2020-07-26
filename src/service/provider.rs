@@ -1,7 +1,9 @@
+// TODO refactor this file
 use crate::{
     cmd::{self, Command, User},
     Result,
 };
+use cache::kvstore::KvStore;
 use cookie::Cookie;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -11,12 +13,13 @@ use std::str::FromStr;
 pub trait ServiceProvider<'a> {
     fn session(&self) -> Option<&Session>;
     fn config(&self) -> Result<&Config>;
+    fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value>;
     fn list_problems(&mut self, list: cmd::List) -> Result<()>;
-    fn pick_problem(&self, pick: Command) -> Result<()>;
+    fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()>;
     fn problem_test(&self) -> Result<()>;
     fn problem_submit(&self) -> Result<()>;
     fn process_auth(&mut self, user: User) -> Result<()>;
-    fn cache(&mut self) -> Result<&Cache>;
+    fn cache(&mut self) -> Result<&KvStore>;
     fn name(&self) -> &'a str;
 }
 
@@ -56,13 +59,23 @@ impl FromStr for Session {
     }
 }
 
+fn session_to_cookie(id: &str, csrf: &str) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("{}={}; ", "LEETCODE_SESSION", id));
+    s.push_str(&format!("{}={}", "csrftoken", csrf));
+
+    s
+}
+
 impl From<Session> for String {
     fn from(session: Session) -> Self {
-        let mut s = String::new();
-        s.push_str(&format!("{}={}; ", "LEETCODE_SESSION", session.id));
-        s.push_str(&format!("{}={}", "csrftoken", session.csrf));
+        session_to_cookie(&session.id, &session.csrf)
+    }
+}
 
-        s
+impl From<&Session> for String {
+    fn from(session: &Session) -> Self {
+        session_to_cookie(&session.id, &session.csrf)
     }
 }
 
@@ -71,6 +84,7 @@ pub struct Urls {
     pub base: String,
     pub api: String,
     pub graphql: String,
+    pub problems: String,
     pub problems_all: String,
     pub github_login: String,
     pub github_login_request: String,
@@ -87,5 +101,3 @@ impl Config {
         Config { urls }
     }
 }
-
-pub struct Cache;

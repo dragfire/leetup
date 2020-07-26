@@ -1,4 +1,5 @@
 use crate::{
+    fetch::Problem,
     service::{self, ServiceProvider},
     Result,
 };
@@ -41,13 +42,24 @@ pub struct User {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct Pick {
+    /// Show/Pick a problem using ID
+    pub id: Option<usize>,
+}
+
+#[derive(Debug, StructOpt)]
 pub enum Command {
     /// List questions
     #[structopt(name = "list")]
     List(List),
 
+    /// User auth
     #[structopt(name = "user")]
     User(User),
+
+    /// Pick a problem
+    #[structopt(name = "pick")]
+    Pick(Pick),
 }
 
 /// -q to query by conditions.
@@ -140,9 +152,12 @@ pub struct LeetUpArgs {
 
 pub fn process() -> Result<()> {
     let opt = LeetUpArgs::from_args();
-    let mut provider = service::Leetcode::new();
+    let mut provider = service::leetcode::Leetcode::new();
 
     match opt.command {
+        Command::Pick(pick) => {
+            provider.pick_problem(pick)?;
+        }
         Command::List(list) => {
             provider.list_problems(list)?;
         }
