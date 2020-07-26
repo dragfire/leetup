@@ -1,14 +1,15 @@
 use crate::{
-    cmd::{Command, List, OrderBy, Query, User},
-    fetch,
+    cmd::{self, Command, List, OrderBy, Query, User},
+    fetch::{self, Problem},
     icon::Icon,
-    service::{auth, Cache, Config, ServiceProvider, Session, Urls},
+    service::{auth, Config, ServiceProvider, Session, Urls},
     LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
 use cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::cmp::Ordering;
 use std::env;
 use std::path::PathBuf;
@@ -37,6 +38,7 @@ impl<'a> Leetcode<'a> {
             base: "https://leetcode.com".to_string(),
             api: "https://leetcode.com/api".to_string(),
             graphql: "https://leetcode.com/graphql".to_string(),
+            problems: "https://leetcode.com/problems/".to_string(),
             problems_all: "https://leetcode.com/api/problems/all".to_string(),
             github_login: "https://leetcode.com/accounts/github/login/?next=%2F".to_string(),
             github_login_request: "https://github.com/login".to_string(),
@@ -68,6 +70,7 @@ impl<'a> Leetcode<'a> {
             name,
         }
     }
+
     fn cache_session(&mut self, session: Session) -> Result<()> {
         let session_str = serde_json::to_string(&session)?;
         self.cache.set("session".to_string(), session_str)?;
@@ -78,6 +81,14 @@ impl<'a> Leetcode<'a> {
         // so ignore that error if it is thrown.
         if let Err(_) = self.cache.remove("problems".to_string()) {}
         Ok(())
+    }
+
+    pub fn fetch_problems(&mut self) -> Result<Vec<StatStatusPair>> {
+        let problems = self.fetch_all_problems()?;
+        let problems: Vec<StatStatusPair> =
+            serde_json::from_value(problems["stat_status_pairs"].clone())?;
+
+        Ok(problems)
     }
 }
 
@@ -147,23 +158,6 @@ pub struct ListResponse {
     pub category_slug: String,
 }
 
-/// Fetch all problems
-pub fn fetch_all_problems<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<ListResponse> {
-    let url = &provider.config()?.urls.problems_all;
-    let session = provider.session();
-    let mut headers = request::List::new();
-
-    if let Some(sess) = session {
-        let sess: Session = sess.clone();
-        let s: String = sess.into();
-        headers.append(&format!("Cookie: {}", s)).unwrap();
-    }
-
-    fetch::get(url, headers)?
-        .json::<ListResponse>()
-        .map_err(LeetUpError::Serde)
-}
-
 fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
     for obj in probs {
         let qstat = &obj.stat;
@@ -230,17 +224,38 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(&self.config)
     }
 
-    fn list_problems(&mut self, list: List) -> Result<()> {
-        let mut problems_res: ListResponse;
+    /// Fetch all problems
+    ///
+    /// Use cache wherever necessary
+    fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
+        let problems_res: serde_json::value::Value;
         if let Some(ref val) = self.cache.get("problems".to_string())? {
-            problems_res = serde_json::from_str::<ListResponse>(val)?;
+            problems_res = serde_json::from_str::<serde_json::value::Value>(val)?;
         } else {
-            problems_res = fetch_all_problems(self)?;
+            let url = &self.config.urls.problems_all;
+            let session = self.session();
+            let mut headers = request::List::new();
+
+            if let Some(sess) = session {
+                let sess: Session = sess.clone();
+                let s: String = sess.into();
+                headers.append(&format!("Cookie: {}", s)).unwrap();
+            }
+
+            problems_res = fetch::get(url, headers)?
+                .json::<serde_json::value::Value>()
+                .map_err(LeetUpError::Serde)?;
             let res_serialized = serde_json::to_string(&problems_res)?;
             self.cache.set("problems".to_string(), res_serialized)?;
         }
 
-        let probs = &mut problems_res.stat_status_pairs;
+        Ok(problems_res)
+    }
+
+    fn list_problems(&mut self, list: List) -> Result<()> {
+        let problems_res = self.fetch_all_problems()?;
+        let mut probs: Vec<StatStatusPair> =
+            serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
 
         if list.order.is_some() {
             let orders = OrderBy::from_str(list.order.as_ref().unwrap());
@@ -299,26 +314,42 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn pick_problem(&self, _pick: Command) -> Result<()> {
-        let config = self.config()?;
+    fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()> {
+        let probs = self.fetch_problems()?;
+        let urls = &self.config.urls;
+        let problem: Problem = probs
+            .iter()
+            .find(|item| item.stat.question_id == pick.id.unwrap())
+            .map(|item| Problem {
+                link: format!("{}{}/", urls.problems, item.stat.question_title_slug),
+                slug: item.stat.question_title_slug.to_string(),
+            })
+            .expect("Problem with given ID not found");
+
         let query = r#"
             query getQuestionDetail($titleSlug: String!) {
-             question(titleSlug: $titleSlug) {
-               content
-               stats
-               likes
-               dislikes
-               codeDefinition
-               sampleTestCase
-               enableRunCode
-               metaData
-               translatedContent
-             }
+               question(titleSlug: $titleSlug) {
+                 content
+                 stats
+                 likes
+                 dislikes
+                 codeDefinition
+                 sampleTestCase
+                 enableRunCode
+                 metaData
+                 translatedContent
+               }
             }
         "#;
-        let client = request::Client::builder().redirect(true).build();
-        let res = client.post(&config.urls.graphql).body(query).perform();
-        Ok(())
+        let body: serde_json::value::Value = json!({
+            "query": query,
+            "variables": json!({
+                "titleSlug": problem.slug
+            }),
+            "operationName": "getQuestionDetail"
+        });
+
+        fetch::graphql_request(self, problem, body.to_string())
     }
 
     fn problem_test(&self) -> Result<()> {
@@ -367,8 +398,8 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn cache(&mut self) -> Result<&Cache> {
-        panic!();
+    fn cache(&mut self) -> Result<&KvStore> {
+        Ok(&self.cache)
     }
 
     fn name(&self) -> &'a str {
