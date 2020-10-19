@@ -8,6 +8,7 @@ use crate::{
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
 use cache::kvstore::KvStore;
+use colci::Color;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
@@ -230,16 +231,21 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
         let problems_res: serde_json::value::Value;
         if let Some(ref val) = self.cache.get("problems".to_string())? {
+            println!("Fetching problems from cache...");
             problems_res = serde_json::from_str::<serde_json::value::Value>(val)?;
         } else {
             let url = &self.config.urls.problems_all;
             let session = self.session();
             let mut headers = request::List::new();
 
-            if let Some(sess) = session {
-                let sess: Session = sess.clone();
-                let s: String = sess.into();
-                headers.append(&format!("Cookie: {}", s)).unwrap();
+            match session {
+                Some(sess) => {
+                    println!("User logged in!");
+                    let sess: Session = sess.clone();
+                    let s: String = sess.into();
+                    headers.append(&format!("Cookie: {}", s)).unwrap();
+                }
+                None => println!("User not logged in!"),
             }
 
             problems_res = fetch::get(url, headers)?
@@ -253,6 +259,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     fn list_problems(&mut self, list: List) -> Result<()> {
+        println!("Fetching problems...");
         let problems_res = self.fetch_all_problems()?;
         let mut probs: Vec<StatStatusPair> =
             serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
@@ -383,6 +390,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         // github login
         if let Some(_) = user.github {
             let session = auth::github_login(self)?;
+            println!("{}", Color::Green("User logged in!").make());
             self.cache_session(session)?;
         }
 
