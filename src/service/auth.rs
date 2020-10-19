@@ -2,6 +2,7 @@ use crate::{
     service::{ServiceProvider, Session},
     LeetUpError, Result,
 };
+use colci::Color;
 use regex::Regex;
 use std::io::{BufWriter, Write};
 use std::str::FromStr;
@@ -18,12 +19,13 @@ impl User {
         let stdin = std::io::stdin();
         let mut id = String::new();
 
-        write!(out, "Username: ").ok();
+        write!(out, "{}", Color::Yellow("Username: ").make()).ok();
         out.flush().unwrap();
         stdin.read_line(&mut id).unwrap();
         id = id.trim().to_string();
 
-        let pass = rpassword::prompt_password_stdout("Password: ").unwrap();
+        let pass =
+            rpassword::prompt_password_stdout(Color::Yellow("Password: ").make().as_str()).unwrap();
 
         User { id, pass }
     }
@@ -68,6 +70,9 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     client.redirect(true).unwrap();
 
     let _res = client.get(&config.urls.github_login).perform();
+    if _res.status() != 200 {
+        eprintln!("{:#?}", _res);
+    }
 
     let cookies = client.cookies().unwrap();
     let mut cookie_raw = String::new();

@@ -1,3 +1,4 @@
+#![allow(unused_variables, unused_imports, dead_code)]
 use bytes::Bytes;
 use curl::easy::Easy;
 pub use curl::easy::List;
