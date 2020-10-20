@@ -9,12 +9,150 @@ use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
 use cache::kvstore::KvStore;
 use colci::Color;
+use html2text::from_read;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::env;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufWriter;
 use std::path::PathBuf;
 use std::str::FromStr;
+
+#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Difficulty {
+    pub level: usize,
+}
+
+impl ToString for Difficulty {
+    fn to_string(&self) -> String {
+        match self.level {
+            1 => Green.paint(String::from("Easy")).to_string(),
+            2 => Yellow.paint(String::from("Medium")).to_string(),
+            3 => Red.paint(String::from("Hard")).to_string(),
+            _ => String::from("UnknownLevel"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Stat {
+    pub question_id: usize,
+
+    #[serde(rename = "question__article__live")]
+    pub question_article_live: Option<bool>,
+
+    #[serde(rename = "question__article__slug")]
+    pub question_article_slug: Option<String>,
+
+    #[serde(rename = "question__title")]
+    pub question_title: String,
+
+    #[serde(rename = "question__title_slug")]
+    pub question_title_slug: String,
+
+    #[serde(rename = "question__hide")]
+    pub question_hide: bool,
+
+    pub total_acs: usize,
+    pub total_submitted: usize,
+    pub frontend_question_id: usize,
+    pub is_new_question: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct StatStatusPair {
+    pub stat: Stat,
+    pub status: Option<String>,
+    pub difficulty: Difficulty,
+    pub paid_only: bool,
+    pub is_favor: bool,
+    pub frequency: isize,
+    pub progress: isize,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ListResponse {
+    pub user_name: String,
+    pub num_solved: usize,
+    pub num_total: usize,
+    pub ac_easy: usize,
+    pub ac_medium: usize,
+    pub ac_hard: usize,
+    pub stat_status_pairs: Vec<StatStatusPair>,
+    pub frequency_high: usize,
+    pub frequency_mid: usize,
+    pub category_slug: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CodeDefinition {
+    value: String,
+    text: String,
+
+    #[serde(rename = "defaultCode")]
+    default_code: String,
+}
+
+fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
+    for obj in probs {
+        let qstat = &obj.stat;
+
+        let starred_icon = if obj.is_favor {
+            Yellow.paint(Icon::Star.to_string()).to_string()
+        } else {
+            Icon::Empty.to_string()
+        };
+
+        let locked_icon = if obj.paid_only {
+            Red.paint(Icon::Lock.to_string()).to_string()
+        } else {
+            Icon::Empty.to_string()
+        };
+
+        let acd = if obj.status.is_some() {
+            Green.paint(Icon::Yes.to_string()).to_string()
+        } else {
+            Icon::Empty.to_string()
+        };
+
+        println!(
+            "{} {:2} {} [{:^4}] {:75} {:6}",
+            starred_icon,
+            locked_icon,
+            acd,
+            qstat.question_id,
+            qstat.question_title,
+            obj.difficulty.to_string()
+        );
+    }
+}
+
+fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
+    let mut is_satisfied = true;
+
+    for q in queries {
+        match q {
+            Query::Easy => is_satisfied &= o.difficulty.level == 1,
+            Query::NotEasy => is_satisfied &= o.difficulty.level != 1,
+            Query::Medium => is_satisfied &= o.difficulty.level == 2,
+            Query::NotMedium => is_satisfied &= o.difficulty.level != 2,
+            Query::Hard => is_satisfied &= o.difficulty.level == 3,
+            Query::NotHard => is_satisfied &= o.difficulty.level != 3,
+            Query::Locked => is_satisfied &= o.paid_only,
+            Query::Unlocked => is_satisfied &= !o.paid_only,
+            Query::Done => is_satisfied &= o.status.is_some(),
+            Query::NotDone => is_satisfied &= o.status.is_none(),
+            Query::Starred => is_satisfied &= o.is_favor,
+            Query::Unstarred => is_satisfied &= !o.is_favor,
+        }
+    }
+
+    is_satisfied
+}
 
 /// Leetcode holds all attributes required to implement ServiceProvider trait.
 pub struct Leetcode<'a> {
@@ -93,129 +231,6 @@ impl<'a> Leetcode<'a> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Difficulty {
-    pub level: usize,
-}
-
-impl ToString for Difficulty {
-    fn to_string(&self) -> String {
-        match self.level {
-            1 => Green.paint(String::from("Easy")).to_string(),
-            2 => Yellow.paint(String::from("Medium")).to_string(),
-            3 => Red.paint(String::from("Hard")).to_string(),
-            _ => String::from("UnknownLevel"),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Stat {
-    pub question_id: usize,
-
-    #[serde(rename = "question__article__live")]
-    pub question_article_live: Option<bool>,
-
-    #[serde(rename = "question__article__slug")]
-    pub question_article_slug: Option<String>,
-
-    #[serde(rename = "question__title")]
-    pub question_title: String,
-
-    #[serde(rename = "question__title_slug")]
-    pub question_title_slug: String,
-
-    #[serde(rename = "question__hide")]
-    pub question_hide: bool,
-
-    pub total_acs: usize,
-    pub total_submitted: usize,
-    pub frontend_question_id: usize,
-    pub is_new_question: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct StatStatusPair {
-    pub stat: Stat,
-    pub status: Option<String>,
-    pub difficulty: Difficulty,
-    pub paid_only: bool,
-    pub is_favor: bool,
-    pub frequency: isize,
-    pub progress: isize,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ListResponse {
-    pub user_name: String,
-    pub num_solved: usize,
-    pub num_total: usize,
-    pub ac_easy: usize,
-    pub ac_medium: usize,
-    pub ac_hard: usize,
-    pub stat_status_pairs: Vec<StatStatusPair>,
-    pub frequency_high: usize,
-    pub frequency_mid: usize,
-    pub category_slug: String,
-}
-
-fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
-    for obj in probs {
-        let qstat = &obj.stat;
-
-        let starred_icon = if obj.is_favor {
-            Yellow.paint(Icon::Star.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        let locked_icon = if obj.paid_only {
-            Red.paint(Icon::Lock.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        let acd = if obj.status.is_some() {
-            Green.paint(Icon::Yes.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        println!(
-            "{} {:2} {} [{:^4}] {:75} {:6}",
-            starred_icon,
-            locked_icon,
-            acd,
-            qstat.question_id,
-            qstat.question_title,
-            obj.difficulty.to_string()
-        );
-    }
-}
-
-fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
-    let mut is_satisfied = true;
-
-    for q in queries {
-        match q {
-            Query::Easy => is_satisfied &= o.difficulty.level == 1,
-            Query::NotEasy => is_satisfied &= o.difficulty.level != 1,
-            Query::Medium => is_satisfied &= o.difficulty.level == 2,
-            Query::NotMedium => is_satisfied &= o.difficulty.level != 2,
-            Query::Hard => is_satisfied &= o.difficulty.level == 3,
-            Query::NotHard => is_satisfied &= o.difficulty.level != 3,
-            Query::Locked => is_satisfied &= o.paid_only,
-            Query::Unlocked => is_satisfied &= !o.paid_only,
-            Query::Done => is_satisfied &= o.status.is_some(),
-            Query::NotDone => is_satisfied &= o.status.is_none(),
-            Query::Starred => is_satisfied &= o.is_favor,
-            Query::Unstarred => is_satisfied &= !o.is_favor,
-        }
-    }
-
-    is_satisfied
-}
-
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn session(&self) -> Option<&Session> {
         self.session.as_ref()
@@ -231,7 +246,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
         let problems_res: serde_json::value::Value;
         if let Some(ref val) = self.cache.get("problems".to_string())? {
-            println!("Fetching problems from cache...");
+            debug!("Fetching problems from cache...");
             problems_res = serde_json::from_str::<serde_json::value::Value>(val)?;
         } else {
             let url = &self.config.urls.problems_all;
@@ -259,7 +274,6 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     fn list_problems(&mut self, list: List) -> Result<()> {
-        println!("Fetching problems...");
         let problems_res = self.fetch_all_problems()?;
         let mut probs: Vec<StatStatusPair> =
             serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
@@ -333,6 +347,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             })
             .expect("Problem with given ID not found");
 
+        let slug = problem.slug.to_owned();
         let query = r#"
             query getQuestionDetail($titleSlug: String!) {
                question(titleSlug: $titleSlug) {
@@ -351,12 +366,55 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let body: serde_json::value::Value = json!({
             "query": query,
             "variables": json!({
-                "titleSlug": problem.slug
+                "titleSlug": slug.to_owned(),
             }),
             "operationName": "getQuestionDetail"
         });
 
-        fetch::graphql_request(self, problem, body.to_string())
+        debug!("Request body: {:#?}", body);
+
+        let response = fetch::graphql_request(self, problem, body.to_string())?;
+        let mut definition = None;
+        debug!("Response: {:#?}", response);
+        if let Some(content) = &response["data"]["question"]["content"].as_str() {
+            let content = from_read(content.as_bytes(), 80);
+            let content = content.replace("**", "");
+            let content = content
+                .split('\n')
+                .map(|s| format!("// {}", s))
+                .collect::<Vec<String>>()
+                .join("\n");
+            debug!("Content: {}", content);
+            definition = Some(content);
+        }
+
+        let mut filename = env::current_dir()?;
+        filename.push(slug);
+        filename.set_extension("rs");
+
+        if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
+            let code_defs: Vec<(String, CodeDefinition)> =
+                serde_json::from_str::<Vec<CodeDefinition>>(code_defs)?
+                    .into_iter()
+                    .map(|def| (def.value.to_owned(), def))
+                    .collect();
+            let code_defs: HashMap<_, _> = code_defs.into_iter().collect();
+            let mut writer = BufWriter::new(File::create(&filename)?);
+            if let Some(definition) = definition {
+                writer.write_all(definition.as_bytes())?;
+            }
+            let code = &code_defs.get("rust").unwrap().default_code;
+            debug!("Code: {}", code);
+            writer.write(b"\n\n\n")?;
+            writer.write_all(code.as_bytes())?;
+            writer.flush()?;
+            println!(
+                "Generated: {}",
+                Color::Magenta(filename.to_str().unwrap()).make()
+            );
+        }
+
+        Ok(())
     }
 
     fn problem_test(&self) -> Result<()> {

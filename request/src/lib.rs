@@ -260,7 +260,6 @@ impl Client {
         }
 
         if let Some(ref cookie) = request.cookie {
-            println!("{}", cookie);
             handle.cookie(cookie).unwrap();
         }
 

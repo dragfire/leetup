@@ -26,12 +26,9 @@ pub fn graphql_request<'a, P: ServiceProvider<'a>>(
     provider: &P,
     problem: Problem,
     body: String,
-) -> Result<()> {
+) -> Result<serde_json::value::Value> {
     let config = provider.config()?;
-    let client = request::Client::builder()
-        .http2(true)
-        .redirect(true)
-        .build();
+    let client = request::Client::builder().redirect(true).build();
     let body = body.to_string();
     let session = provider.session().ok_or_else(|| LeetUpError::OptNone)?;
     let cookie_header: String = session.into();
@@ -48,9 +45,6 @@ pub fn graphql_request<'a, P: ServiceProvider<'a>>(
         .header("Origin: https://leetcode.com")
         .body(body)
         .perform();
-    let data = res.json::<serde_json::value::Value>().unwrap();
 
-    println!("{:?}", data);
-
-    Ok(())
+    res.json::<serde_json::value::Value>().map_err(|e| e.into())
 }
