@@ -1,8 +1,9 @@
 use crate::{
     fetch::Problem,
-    service::{self, ServiceProvider},
+    service::{self, Lang, ServiceProvider},
     Result,
 };
+use log::debug;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -43,8 +44,20 @@ pub struct User {
 
 #[derive(Debug, StructOpt)]
 pub struct Pick {
-    /// Show/Pick a problem using ID
+    /// Show/Pick a problem using ID.
     pub id: Option<usize>,
+
+    /// Generate code if true.
+    #[structopt(short)]
+    pub generate: bool,
+
+    /// Include problem definition in generated source file.
+    #[structopt(short)]
+    pub def: bool,
+
+    /// Language used to generate problem's source.
+    #[structopt(short, long, default_value = "rust")]
+    pub lang: Lang,
 }
 
 #[derive(Debug, StructOpt)]
@@ -152,6 +165,7 @@ pub struct LeetUpArgs {
 
 pub fn process() -> Result<()> {
     let opt = LeetUpArgs::from_args();
+    debug!("Options: {:#?}", opt);
     let mut provider = service::leetcode::Leetcode::new();
 
     match opt.command {

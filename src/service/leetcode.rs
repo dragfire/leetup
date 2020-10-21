@@ -2,7 +2,7 @@ use crate::{
     cmd::{self, Command, List, OrderBy, Query, User},
     fetch::{self, Problem},
     icon::Icon,
-    service::{auth, Config, ServiceProvider, Session, Urls},
+    service::{auth, CommentStyle, Config, Lang, LangInfo, ServiceProvider, Session, Urls},
     LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
@@ -390,7 +390,12 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         let mut filename = env::current_dir()?;
         filename.push(slug);
-        filename.set_extension("rs");
+
+        let lang = match pick.lang {
+            Lang::Rust(info) => info,
+            Lang::Java(info) => info,
+        };
+        filename.set_extension(&lang.extension);
 
         if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
             let code_defs: Vec<(String, CodeDefinition)> =
@@ -403,7 +408,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             if let Some(definition) = definition {
                 writer.write_all(definition.as_bytes())?;
             }
-            let code = &code_defs.get("rust").unwrap().default_code;
+            let code = &code_defs.get(&lang.name).unwrap().default_code;
             debug!("Code: {}", code);
             writer.write(b"\n\n\n")?;
             writer.write_all(code.as_bytes())?;
