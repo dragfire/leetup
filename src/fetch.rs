@@ -21,8 +21,8 @@ pub fn get(url: &str, headers: List) -> Result<Response> {
     Ok(client.get(url).perform())
 }
 
-/// Make graphql request
-pub fn graphql_request<'a, P: ServiceProvider<'a>>(
+/// Make a POST request
+pub fn post<'a, P: ServiceProvider<'a>>(
     provider: &P,
     problem: Problem,
     body: String,

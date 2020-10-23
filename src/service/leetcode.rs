@@ -173,15 +173,21 @@ pub struct Leetcode<'a> {
 
 impl<'a> Leetcode<'a> {
     pub fn new() -> Self {
+        let base = "https://leetcode.com";
         let urls = Urls {
-            base: "https://leetcode.com".to_string(),
-            api: "https://leetcode.com/api".to_string(),
-            graphql: "https://leetcode.com/graphql".to_string(),
-            problems: "https://leetcode.com/problems/".to_string(),
-            problems_all: "https://leetcode.com/api/problems/all".to_string(),
-            github_login: "https://leetcode.com/accounts/github/login/?next=%2F".to_string(),
-            github_login_request: "https://github.com/login".to_string(),
-            github_session_request: "https://github.com/session".to_string(),
+            base: base.to_owned(),
+            api: format!("{}/api", base),
+            graphql: format!("{}/graphql", base),
+            problems: format!("{}/problems/", base),
+            problems_all: format!("{}/api/problems/all", base),
+            github_login: format!("{}/accounts/github/login/?next=%2F", base),
+            github_login_request: format!("{}/login", base),
+            github_session_request: format!("{}/session", base),
+            test: format!("{}/problems/$slug/interpret_solution/", base),
+            submit: format!("{}/problems/$slug/submit/", base),
+            submissions: format!("{}/api/submissions/$slug", base),
+            submission: format!("{}/submissions/detail/$id", base),
+            verify: format!("{}/submissions/detail/$id/check/", base),
         };
         let name = "leetcode";
         let config = Config::new(urls);
@@ -229,6 +235,24 @@ impl<'a> Leetcode<'a> {
 
         Ok(problems)
     }
+
+    fn headers_with_session(&self, session: Option<&Session>) -> request::List {
+        let mut headers = request::List::new();
+
+        match session {
+            Some(sess) => {
+                println!("User logged in!");
+                let sess: Session = sess.clone();
+                let s: String = sess.into();
+                headers.append(&format!("Cookie: {}", s)).unwrap();
+            }
+            None => println!("User not logged in!"),
+        }
+
+        headers
+    }
+
+    fn run_code(problem: Problem) {}
 }
 
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
@@ -251,18 +275,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         } else {
             let url = &self.config.urls.problems_all;
             let session = self.session();
-            let mut headers = request::List::new();
-
-            match session {
-                Some(sess) => {
-                    println!("User logged in!");
-                    let sess: Session = sess.clone();
-                    let s: String = sess.into();
-                    headers.append(&format!("Cookie: {}", s)).unwrap();
-                }
-                None => println!("User not logged in!"),
-            }
-
+            let headers = self.headers_with_session(session);
             problems_res = fetch::get(url, headers)?
                 .json::<serde_json::value::Value>()
                 .map_err(LeetUpError::Serde)?;
@@ -373,7 +386,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         debug!("Request body: {:#?}", body);
 
-        let response = fetch::graphql_request(self, problem, body.to_string())?;
+        let response = fetch::post(self, problem, body.to_string())?;
         let mut definition = None;
         debug!("Response: {:#?}", response);
         if let Some(content) = &response["data"]["question"]["content"].as_str() {
@@ -394,6 +407,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let lang = match pick.lang {
             Lang::Rust(info) => info,
             Lang::Java(info) => info,
+            Lang::Javascript(info) => info,
+            Lang::Python3(info) => info,
+            Lang::MySQL(info) => info,
         };
         filename.set_extension(&lang.extension);
 
