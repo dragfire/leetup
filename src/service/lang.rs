@@ -24,6 +24,9 @@ pub enum CommentStyle {
 pub enum Lang {
     Rust(LangInfo),
     Java(LangInfo),
+    Javascript(LangInfo),
+    Python3(LangInfo),
+    MySQL(LangInfo),
 }
 
 impl FromStr for Lang {
@@ -31,6 +34,8 @@ impl FromStr for Lang {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let c_comment = CommentStyle::C("//".to_string());
+        let py_comment = CommentStyle::C("#".to_string());
+        let mysql_comment = CommentStyle::C("--".to_string());
 
         match s {
             "rust" => Ok(Lang::Rust(LangInfo {
@@ -42,6 +47,21 @@ impl FromStr for Lang {
                 name: "java".to_string(),
                 extension: "java".to_string(),
                 comment_style: c_comment,
+            })),
+            "js" => Ok(Lang::Java(LangInfo {
+                name: "javascript".to_string(),
+                extension: "js".to_string(),
+                comment_style: c_comment,
+            })),
+            "python" => Ok(Lang::Java(LangInfo {
+                name: "python3".to_string(),
+                extension: "py".to_string(),
+                comment_style: py_comment,
+            })),
+            "mysql" => Ok(Lang::Java(LangInfo {
+                name: "mysql".to_string(),
+                extension: "sql".to_string(),
+                comment_style: mysql_comment,
             })),
             _ => Err(LeetUpError::Any(anyhow!("Language not supported!"))),
         }

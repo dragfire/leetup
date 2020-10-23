@@ -89,6 +89,11 @@ pub struct Urls {
     pub github_login: String,
     pub github_login_request: String,
     pub github_session_request: String,
+    pub test: String,
+    pub submit: String,
+    pub submissions: String,
+    pub submission: String,
+    pub verify: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
