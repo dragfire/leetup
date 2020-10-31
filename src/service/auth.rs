@@ -81,7 +81,7 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     client.redirect(true).unwrap();
 
     let _res = client.get(&config.urls.github_login).perform();
-    if _res.status() != 200 {
+    if _res.status() != 200 || _res.status() != 302 {
         error!("{:#?}", _res);
         return Err(client_err);
     }
