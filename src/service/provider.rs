@@ -16,8 +16,8 @@ pub trait ServiceProvider<'a> {
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value>;
     fn list_problems(&mut self, list: cmd::List) -> Result<()>;
     fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()>;
-    fn problem_test(&self) -> Result<()>;
-    fn problem_submit(&self) -> Result<()>;
+    fn problem_test(&self, test: cmd::Test) -> Result<()>;
+    fn problem_submit(&self, submit: cmd::Submit) -> Result<()>;
     fn process_auth(&mut self, user: User) -> Result<()>;
     fn cache(&mut self) -> Result<&KvStore>;
     fn name(&self) -> &'a str;
@@ -79,6 +79,7 @@ impl From<&Session> for String {
     }
 }
 
+// TODO move to a config file.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Urls {
     pub base: String,

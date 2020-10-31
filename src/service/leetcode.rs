@@ -2,7 +2,7 @@ use crate::{
     cmd::{self, Command, List, OrderBy, Query, User},
     fetch::{self, Problem},
     icon::Icon,
-    service::{auth, CommentStyle, Config, Lang, LangInfo, ServiceProvider, Session, Urls},
+    service::{self, auth, CommentStyle, Config, Lang, LangInfo, ServiceProvider, Session, Urls},
     LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
@@ -181,8 +181,8 @@ impl<'a> Leetcode<'a> {
             problems: format!("{}/problems/", base),
             problems_all: format!("{}/api/problems/all", base),
             github_login: format!("{}/accounts/github/login/?next=%2F", base),
-            github_login_request: format!("{}/login", base),
-            github_session_request: format!("{}/session", base),
+            github_login_request: "https://github.com/login".to_string(),
+            github_session_request: "https://github.com/session".to_string(),
             test: format!("{}/problems/$slug/interpret_solution/", base),
             submit: format!("{}/problems/$slug/submit/", base),
             submissions: format!("{}/api/submissions/$slug", base),
@@ -236,23 +236,12 @@ impl<'a> Leetcode<'a> {
         Ok(problems)
     }
 
-    fn headers_with_session(&self, session: Option<&Session>) -> request::List {
-        let mut headers = request::List::new();
-
-        match session {
-            Some(sess) => {
-                println!("User logged in!");
-                let sess: Session = sess.clone();
-                let s: String = sess.into();
-                headers.append(&format!("Cookie: {}", s)).unwrap();
-            }
-            None => println!("User not logged in!"),
-        }
-
-        headers
+    fn run_code(&self, problem: Problem, body: serde_json::Value) -> Result<()> {
+        debug!("Body: {}", body.to_string());
+        let url = &self.config()?.urls.submit.replace("$slug", &problem.slug);
+        fetch::post(self, url, problem, body.to_string())?;
+        Ok(())
     }
-
-    fn run_code(problem: Problem) {}
 }
 
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
@@ -269,14 +258,14 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     /// Use cache wherever necessary
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
         let problems_res: serde_json::value::Value;
+        self.cache.remove("problems".to_string())?;
         if let Some(ref val) = self.cache.get("problems".to_string())? {
             debug!("Fetching problems from cache...");
             problems_res = serde_json::from_str::<serde_json::value::Value>(val)?;
         } else {
             let url = &self.config.urls.problems_all;
             let session = self.session();
-            let headers = self.headers_with_session(session);
-            problems_res = fetch::get(url, headers)?
+            problems_res = fetch::get(url, None, session)?
                 .json::<serde_json::value::Value>()
                 .map_err(LeetUpError::Serde)?;
             let res_serialized = serde_json::to_string(&problems_res)?;
@@ -351,15 +340,25 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()> {
         let probs = self.fetch_problems()?;
         let urls = &self.config.urls;
+        let lang = match pick.lang.clone() {
+            Lang::Rust(info) => info,
+            Lang::Java(info) => info,
+            Lang::Javascript(info) => info,
+            Lang::Python3(info) => info,
+            Lang::MySQL(info) => info,
+        };
         let problem: Problem = probs
             .iter()
             .find(|item| item.stat.question_id == pick.id.unwrap())
             .map(|item| Problem {
+                id: item.stat.question_id,
                 link: format!("{}{}/", urls.problems, item.stat.question_title_slug),
                 slug: item.stat.question_title_slug.to_string(),
+                lang: lang.name.to_owned(),
             })
             .expect("Problem with given ID not found");
 
+        let problem_id = problem.id;
         let slug = problem.slug.to_owned();
         let query = r#"
             query getQuestionDetail($titleSlug: String!) {
@@ -386,9 +385,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         debug!("Request body: {:#?}", body);
 
-        let response = fetch::post(self, problem, body.to_string())?;
-        let mut definition = None;
+        let response = fetch::post(self, &urls.graphql, problem, body.to_string())?;
         debug!("Response: {:#?}", response);
+
+        let mut definition = None;
+
         if let Some(content) = &response["data"]["question"]["content"].as_str() {
             let content = from_read(content.as_bytes(), 80);
             let content = content.replace("**", "");
@@ -397,20 +398,16 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 .map(|s| format!("// {}", s))
                 .collect::<Vec<String>>()
                 .join("\n");
+            let content = format!(
+                "// @leetup id={} lang={} slug={}\n\n{}",
+                problem_id, lang.name, slug, content
+            );
             debug!("Content: {}", content);
             definition = Some(content);
         }
 
         let mut filename = env::current_dir()?;
         filename.push(slug);
-
-        let lang = match pick.lang {
-            Lang::Rust(info) => info,
-            Lang::Java(info) => info,
-            Lang::Javascript(info) => info,
-            Lang::Python3(info) => info,
-            Lang::MySQL(info) => info,
-        };
         filename.set_extension(&lang.extension);
 
         if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
@@ -438,12 +435,29 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn problem_test(&self) -> Result<()> {
-        panic!();
+    fn problem_test(&self, test: cmd::Test) -> Result<()> {
+        let problem = service::extract_problem(test.filename);
+        let body = json!({
+                "lang":        problem.lang.to_owned(),
+                "question_id": problem.id,
+                "test_mode":   false,
+                "typed_code":  service::get_code(&problem),
+        });
+        self.run_code(problem, body)?;
+        Ok(())
     }
 
-    fn problem_submit(&self) -> Result<()> {
-        panic!();
+    fn problem_submit(&self, submit: cmd::Submit) -> Result<()> {
+        let problem = service::extract_problem(submit.filename);
+        let body = json!({
+            "lang":        problem.lang.to_owned(),
+            "question_id": problem.id,
+            "test_mode":   false,
+            "typed_code":  service::get_code(&problem),
+            "judge_type": "large",
+        });
+        self.run_code(problem, body)?;
+        Ok(())
     }
 
     fn process_auth(&mut self, user: User) -> Result<()> {
@@ -468,9 +482,15 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         // github login
         if let Some(_) = user.github {
-            let session = auth::github_login(self)?;
-            println!("{}", Color::Green("User logged in!").make());
-            self.cache_session(session)?;
+            match auth::github_login(self) {
+                Ok(session) => {
+                    println!("{}", Color::Green("User logged in!").make());
+                    self.cache_session(session)?;
+                }
+                Err(_) => {
+                    println!("{}", Color::Red("Github login failed!").make());
+                }
+            }
         }
 
         if user.logout.is_some() {
