@@ -61,6 +61,22 @@ pub struct Pick {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct Submit {
+    /// Code filename.
+    pub filename: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct Test {
+    /// Code filename.
+    pub filename: String,
+
+    /// Custom test cases.
+    #[structopt(short)]
+    pub test: String,
+}
+
+#[derive(Debug, StructOpt)]
 pub enum Command {
     /// List questions
     #[structopt(name = "list")]
@@ -73,6 +89,14 @@ pub enum Command {
     /// Pick a problem
     #[structopt(name = "pick")]
     Pick(Pick),
+
+    /// Submit a problem
+    #[structopt(name = "submit")]
+    Submit(Submit),
+
+    /// Submit a problem
+    #[structopt(name = "test")]
+    Test(Test),
 }
 
 /// -q to query by conditions.
@@ -177,6 +201,12 @@ pub fn process() -> Result<()> {
         }
         Command::User(user) => {
             provider.process_auth(user)?;
+        }
+        Command::Submit(submit) => {
+            provider.problem_submit(submit)?;
+        }
+        Command::Test(test) => {
+            provider.problem_test(test)?;
         }
     }
     Ok(())

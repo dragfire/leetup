@@ -120,6 +120,7 @@ impl<'a> RequestBuilder<'a> {
 
     pub fn perform(mut self) -> Response {
         let handle = Rc::get_mut(&mut self.client).unwrap();
+        log::debug!("Request: {:#?}", self.request);
         handle.perform(self.request)
     }
 }
@@ -177,6 +178,7 @@ impl ClientBuilder {
             handle.http_version(curl::easy::HttpVersion::V2).unwrap();
         }
 
+        log::debug!("ClientBuilder Headers: {:#?}", self.headers);
         handle.http_headers(self.headers).unwrap();
         handle.useragent("Leetup").unwrap();
         handle.follow_location(self.redirect).unwrap();
@@ -351,7 +353,6 @@ fn get_session() -> String {
     let client = Client::builder().cookie_jar(true).redirect(false).build();
     let res = client.get(url).perform();
     let text = res.text().unwrap();
-    // println!("{}", res.status());
 
     let auth_token_re = Regex::new("name=\"authenticity_token\" value=\"(.*?)\"").unwrap();
     let auth_token = &capture_value(1, auth_token_re, text);
@@ -373,10 +374,7 @@ fn get_session() -> String {
         .header("Content-Type: application/x-www-form-urlencoded")
         .perform();
 
-    // println!("{}", res.status());
-
     let res = client.get(&client.redirect_url().unwrap()).perform();
-    // println!("{:?} {}", res.headers(), res.status());
 
     let url = "https://leetcode.com/accounts/github/login/?next=%2F";
     client.redirect(true).unwrap();
@@ -388,7 +386,6 @@ fn get_session() -> String {
         let mut cookie = std::str::from_utf8(cookie).unwrap().rsplit("\t");
         let val = cookie.next().unwrap();
         let name = cookie.next().unwrap();
-        // println!("{:20}  {}", name, val);
         match name {
             "LEETCODE_SESSION" => {
                 cookie_raw.push_str(&format!("{}={};", "LEETCODE_SESSION", val));
@@ -400,7 +397,6 @@ fn get_session() -> String {
 
     // remove trailing semi-colon
     cookie_raw.pop();
-    // println!("COOKIE: {}", cookie_raw);
     cookie_raw
 }
 
@@ -414,6 +410,7 @@ fn test_get_all_problems() {
     let url = "https://leetcode.com/api/problems/all";
     let client = Client::builder().redirect(true).build();
     let res = client.get(url).perform();
+    println!("{:#?}", res);
     assert_eq!(200, res.status());
 }
 

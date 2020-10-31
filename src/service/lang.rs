@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use std::str::FromStr;
 
 /// Store Lang attributes.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LangInfo {
     pub name: String,
     pub extension: String,
@@ -13,14 +13,15 @@ pub struct LangInfo {
 }
 
 /// Comment styles for different languages.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CommentStyle {
     C(String),
-    Lisp(String),
+    Python3(String),
+    MySQL(String),
 }
 
 /// Represent different languages supported by a Service provider.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Lang {
     Rust(LangInfo),
     Java(LangInfo),
@@ -34,8 +35,8 @@ impl FromStr for Lang {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let c_comment = CommentStyle::C("//".to_string());
-        let py_comment = CommentStyle::C("#".to_string());
-        let mysql_comment = CommentStyle::C("--".to_string());
+        let py_comment = CommentStyle::Python3("#".to_string());
+        let mysql_comment = CommentStyle::MySQL("--".to_string());
 
         match s {
             "rust" => Ok(Lang::Rust(LangInfo {

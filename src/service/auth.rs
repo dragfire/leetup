@@ -3,6 +3,7 @@ use crate::{
     LeetUpError, Result,
 };
 use colci::Color;
+use log::{debug, error};
 use regex::Regex;
 use std::io::{BufWriter, Write};
 use std::str::FromStr;
@@ -39,12 +40,18 @@ fn capture_value(i: usize, re: Regex, text: &str) -> Result<String> {
 }
 
 pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session> {
+    let client_err = LeetUpError::Any(anyhow::anyhow!("Something went wrong!"));
     let config = provider.config()?;
     let client = request::Client::builder()
         .cookie_jar(true)
         .redirect(false)
         .build();
     let res = client.get(&config.urls.github_login_request).perform();
+    if res.status() != 200 {
+        error!("{:#?}", res);
+        return Err(client_err);
+    }
+    debug!("{:#?}", res);
     let text = res.text().unwrap();
 
     let auth_token_re = Regex::new("name=\"authenticity_token\" value=\"(.*?)\"").unwrap();
@@ -61,6 +68,10 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         .body(form)
         .header("Content-Type: application/x-www-form-urlencoded")
         .perform();
+    if _res.status() != 200 {
+        error!("{:#?}", _res);
+        return Err(client_err);
+    }
 
     let redirect_url = client.redirect_url();
     if let Some(ref url) = redirect_url {
@@ -70,8 +81,9 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     client.redirect(true).unwrap();
 
     let _res = client.get(&config.urls.github_login).perform();
-    if _res.status() != 200 {
-        eprintln!("{:#?}", _res);
+    if _res.status() != 200 || _res.status() != 302 {
+        error!("{:#?}", _res);
+        return Err(client_err);
     }
 
     let cookies = client.cookies().unwrap();
