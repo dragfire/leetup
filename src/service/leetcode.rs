@@ -12,7 +12,7 @@ use anyhow::anyhow;
 use cache::kvstore::KvStore;
 use colci::Color;
 use html2text::from_read;
-use log::debug;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
@@ -241,7 +241,7 @@ impl<'a> Leetcode<'a> {
     fn run_code(&self, problem: Problem, body: serde_json::Value) -> Result<()> {
         debug!("Body: {}", body.to_string());
         let url = &self.config()?.urls.submit.replace("$slug", &problem.slug);
-        client::post(self, url, problem, body.to_string())?;
+        client::post(self, url, &body)?;
         Ok(())
     }
 }
@@ -384,9 +384,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "operationName": "getQuestionDetail"
         });
 
-        debug!("Request body: {:#?}", body);
-
-        let response = client::post(self, &urls.graphql, problem, body.to_string())?;
+        let response = client::post(self, &urls.graphql, &body)?;
         debug!("Response: {:#?}", response);
 
         let mut definition = None;

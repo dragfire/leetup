@@ -7,6 +7,7 @@ use cookie::{Cookie, CookieJar};
 use log::debug;
 use reqwest::{
     blocking::{Body, Client, RequestBuilder, Response},
+    header,
     header::HeaderMap,
     header::HeaderValue,
     header::CONTENT_TYPE,
@@ -15,12 +16,7 @@ use reqwest::{
 };
 use serde_json::json;
 
-/// Make a GET request
-pub fn get(
-    url: &str,
-    headers_opt: Option<HeaderMap>,
-    session: Option<&Session>,
-) -> Result<Response> {
+fn headers_with_session(headers_opt: Option<HeaderMap>, session: Option<&Session>) -> HeaderMap {
     let mut headers = HeaderMap::new();
     if let Some(h) = headers_opt {
         headers = HeaderMap::from(h);
@@ -36,41 +32,47 @@ pub fn get(
         );
     }
 
+    headers
+}
+
+/// Make a GET request
+pub fn get(
+    url: &str,
+    headers_opt: Option<HeaderMap>,
+    session: Option<&Session>,
+) -> Result<Response> {
+    let headers = headers_with_session(headers_opt, session);
     let client = Client::builder().default_headers(headers).build()?;
     client.get(url).send().map_err(LeetUpError::Reqwest)
 }
 
 /// Make a POST request
-pub fn post<'a, P: ServiceProvider<'a>>(
+pub fn post<'a, P: ServiceProvider<'a>, T: serde::Serialize + ?Sized>(
     provider: &P,
     url: &str,
-    problem: Problem,
-    body: String,
+    body: &T,
 ) -> Result<serde_json::value::Value> {
-    //let config = provider.config()?;
-    //let client = reqwest::Client::builder().build()?;
-    //let session = provider.session().ok_or_else(|| LeetUpError::OptNone)?;
-    //let cookie_header: String = session.into();
-    //let csrf = &session.csrf;
+    let config = provider.config()?;
+    let headers = headers_with_session(None, provider.session());
+    let client = Client::builder().default_headers(headers).build()?;
 
-    //let client = client
-    //    .post(url)
-    //    .header("Host: leetcode.com")
-    //    .header(&format!("x-csrftoken: {}", csrf))
-    //    .header("X-Requested-With: XMLHttpRequest")
-    //    .header("Content-Type: application/json")
-    //    .header("Origin: https://leetcode.com")
-    //    .body(body);
+    let client = client
+        .post(url)
+        .header(
+            header::ORIGIN,
+            HeaderValue::from_str(&config.urls.base).unwrap(),
+        )
+        .json(body);
 
-    //let res = client.perform();
+    let res = client.send()?;
 
-    //if res.status() == 200 {
-    //    res.json::<serde_json::value::Value>().map_err(|e| e.into())
-    //} else {
-    //    Err(LeetUpError::Any(anyhow!(format!(
-    //        "Status: {}",
-    //        res.status()
-    //    ))))
-    //}
-    Ok(json!({}))
+    if res.status() == 200 {
+        res.json::<serde_json::value::Value>().map_err(|e| e.into())
+    } else {
+        log::error!("{:#?}", res);
+        Err(LeetUpError::Any(anyhow!(format!(
+            "Status: {}",
+            res.status()
+        ))))
+    }
 }

@@ -45,6 +45,7 @@ impl Session {
 
 impl FromStr for Session {
     type Err = cookie::ParseError;
+
     fn from_str(raw: &str) -> std::result::Result<Self, Self::Err> {
         let raw_split = raw.split_whitespace();
 
