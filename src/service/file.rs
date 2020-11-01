@@ -1,35 +1,54 @@
-use crate::service::Problem;
-use std::path::Path;
-
-pub fn extract_problem<P: AsRef<Path>>(filename: P) -> Problem {
-    Problem {
-        slug: "two-sum".to_string(),
-        id: 1,
-        lang: "rust".to_string(),
-        link: "https://leetcode.com/problems/two-sum/submissions/".to_string(),
-    }
-}
-
-pub fn get_code(problem: &Problem) -> String {
-    r#"
+use crate::{service::Problem, LeetUpError, Result};
+use log::*;
 use std::collections::HashMap;
-impl Solution {
-    pub fn two_sum(nums: Vec<i32>, target: i32) -> Vec<i32> {
-        let mut index_map = HashMap::new();
+use std::io::{self, BufRead, Read};
+use std::path::Path;
+use std::str::FromStr;
 
-        for (i, num) in nums.iter().enumerate() {
-            let y = target - num;
+const LEETUP_MARKER: &'static str = "@leetup";
 
-            if let Some(&idx) = index_map.get(&y) {
-                return vec![idx as i32, i as i32];
-            }
+impl FromStr for Problem {
+    type Err = LeetUpError;
 
-            index_map.insert(num, i);
-        }
-
-        vec![]
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let map: HashMap<_, _> = s
+            .split(' ')
+            .map(|e| {
+                let split = e.split('=').collect::<Vec<_>>();
+                (split[0], split[1])
+            })
+            .collect();
+        let id: usize = map.get("id").unwrap().parse().unwrap();
+        let slug = map.get("slug").unwrap().to_string();
+        let lang = map.get("lang").unwrap().to_string();
+        let link = format!("https://leetcode.com/problems/{}/submissions/", slug);
+        Ok(Self {
+            id,
+            slug,
+            lang,
+            link,
+            typed_code: None,
+        })
     }
 }
-    "#
-    .to_string()
+
+pub fn extract_problem<P: AsRef<Path>>(filename: P) -> Result<Problem> {
+    debug!("Filename: {:#?}", filename.as_ref());
+    let reader = io::BufReader::new(std::fs::File::open(filename)?);
+    let mut lines = reader.lines();
+    let line = lines.next().ok_or(LeetUpError::OptNone)??;
+    debug!("Line: {}", line);
+    let line = line
+        .get(line.find(LEETUP_MARKER).unwrap() + LEETUP_MARKER.len()..)
+        .unwrap()
+        .trim();
+    let mut problem = Problem::from_str(line)?;
+    let typed_code = lines
+        .filter_map(|x| x.ok())
+        .collect::<Vec<String>>()
+        .join("\n")
+        .to_string();
+    problem.typed_code = Some(typed_code);
+    debug!("{:#?}", problem);
+    Ok(problem)
 }

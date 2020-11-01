@@ -101,6 +101,31 @@ struct CodeDefinition {
     default_code: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct SubmissionResult {
+    pub code_output: Option<String>,
+    pub compare_result: Option<String>,
+    pub compile_error: Option<String>,
+    pub elapsed_time: u32,
+    pub full_compile_error: Option<String>,
+    pub lang: String,
+    pub memory: u32,
+    pub memory_percentile: Option<f32>,
+    pub pretty_lang: String,
+    pub question_id: u32,
+    pub run_success: bool,
+    pub runtime_percentile: Option<f32>,
+    pub state: String,
+    pub status_code: u32,
+    pub status_memory: String,
+    pub status_msg: String,
+    pub status_runtime: String,
+    pub submission_id: String,
+    pub task_finish_time: i64,
+    pub total_correct: Option<u32>,
+    pub total_testcases: Option<u32>,
+}
+
 fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
     for obj in probs {
         let qstat = &obj.stat;
@@ -265,6 +290,69 @@ impl<'a> Leetcode<'a> {
             }
         }
     }
+
+    fn print_judge_result(&self, result: SubmissionResult) {
+        match result.status_code {
+            10 => {
+                // Accepted
+                println!(
+                    "{}",
+                    Color::Green(&format!(
+                        r#"
+ {} {}
+ {}/{} cases passed ({})
+ Your runtime beats {}% of {} submissions
+ Your memory usage beats {}% of {} submissions ({})
+                    "#,
+                        Icon::Yes.to_string(),
+                        result.status_msg,
+                        result.total_correct.unwrap(),
+                        result.total_testcases.unwrap(),
+                        result.status_runtime,
+                        result.runtime_percentile.unwrap(),
+                        result.lang,
+                        result.memory_percentile.unwrap(),
+                        result.lang,
+                        result.status_memory
+                    ))
+                    .make()
+                );
+            }
+            20 => {
+                // Compile Error
+                println!(
+                    "{}",
+                    Color::Red(&format!(
+                        "\n {} {}\n {}",
+                        Icon::_No.to_string(),
+                        result.status_msg,
+                        result.full_compile_error.unwrap(),
+                    ))
+                    .make()
+                );
+            }
+            _ => {
+                // Wrong Answer | TimeLimitExceeded
+                println!(
+                    "{}",
+                    Color::Red(&format!(
+                        r#"
+ {} {}
+ {}/{} cases passed ({})
+ Failed Test: {}
+                    "#,
+                        Icon::_No.to_string(),
+                        result.status_msg,
+                        result.total_correct.unwrap(),
+                        result.total_testcases.unwrap(),
+                        result.status_runtime,
+                        result.code_output.unwrap(),
+                    ))
+                    .make()
+                );
+            }
+        }
+    }
 }
 
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
@@ -377,6 +465,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 link: format!("{}{}/", urls.problems, item.stat.question_title_slug),
                 slug: item.stat.question_title_slug.to_string(),
                 lang: lang.name.to_owned(),
+                typed_code: None,
             })
             .expect("Problem with given ID not found");
 
@@ -456,12 +545,12 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     fn problem_test(&self, test: cmd::Test) -> Result<()> {
-        let problem = service::extract_problem(test.filename);
+        let problem = service::extract_problem(test.filename)?;
         let body = json!({
                 "lang":        problem.lang.to_owned(),
                 "question_id": problem.id,
                 "test_mode":   true,
-                "typed_code":  service::get_code(&problem),
+                "typed_code":  problem.typed_code.as_ref().unwrap()
         });
         let response = self.run_code(problem, body)?;
         let response = self.verify_run_code(response)?;
@@ -471,19 +560,20 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     fn problem_submit(&self, submit: cmd::Submit) -> Result<()> {
-        let problem = service::extract_problem(submit.filename);
+        let problem = service::extract_problem(submit.filename)?;
         let body = json!({
             "lang":        problem.lang.to_owned(),
             "question_id": problem.id,
             "test_mode":   false,
-            "typed_code":  service::get_code(&problem),
+            "typed_code":  problem.typed_code.as_ref().unwrap(),
             "judge_type": "large",
         });
-        let sp = Spinner::new(Spinners::Dots9, "Submitting code!".into());
+        let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
         let response = self.run_code(problem, body)?;
-        let response = self.verify_run_code(response)?;
+        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(response)?)?;
         sp.stop();
-        println!("Submission Result: {:#?}", response);
+        self.print_judge_result(result);
+
         Ok(())
     }
 

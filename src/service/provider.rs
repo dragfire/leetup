@@ -29,6 +29,7 @@ pub struct Problem {
     pub slug: String,
     pub lang: String,
     pub link: String,
+    pub typed_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
