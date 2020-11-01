@@ -47,13 +47,17 @@ pub fn get(
 }
 
 /// Make a POST request
-pub fn post<'a, P: ServiceProvider<'a>, T: serde::Serialize + ?Sized>(
+pub fn post<'a, P: ServiceProvider<'a>, T: serde::Serialize + ?Sized, F>(
     provider: &P,
     url: &str,
     body: &T,
-) -> Result<serde_json::value::Value> {
+    with_headers: F,
+) -> Result<serde_json::value::Value>
+where
+    F: FnOnce() -> Option<HeaderMap>,
+{
     let config = provider.config()?;
-    let headers = headers_with_session(None, provider.session());
+    let headers = headers_with_session(with_headers(), provider.session());
     let client = Client::builder().default_headers(headers).build()?;
 
     let client = client

@@ -13,6 +13,7 @@ use cache::kvstore::KvStore;
 use colci::Color;
 use html2text::from_read;
 use log::{debug, info};
+use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
@@ -241,7 +242,14 @@ impl<'a> Leetcode<'a> {
     fn run_code(&self, problem: Problem, body: serde_json::Value) -> Result<()> {
         debug!("Body: {}", body.to_string());
         let url = &self.config()?.urls.submit.replace("$slug", &problem.slug);
-        client::post(self, url, &body)?;
+        client::post(self, url, &body, || {
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                header::REFERER,
+                HeaderValue::from_str(&problem.link).unwrap(),
+            );
+            Some(headers)
+        })?;
         Ok(())
     }
 }
@@ -384,7 +392,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "operationName": "getQuestionDetail"
         });
 
-        let response = client::post(self, &urls.graphql, &body)?;
+        let response = client::post(self, &urls.graphql, &body, || None)?;
         debug!("Response: {:#?}", response);
 
         let mut definition = None;
