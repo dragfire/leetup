@@ -16,6 +16,7 @@ use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use spinners::{Spinner, Spinners};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::env;
@@ -239,8 +240,7 @@ impl<'a> Leetcode<'a> {
         Ok(problems)
     }
 
-    fn run_code(&self, problem: Problem, body: serde_json::Value) -> Result<()> {
-        debug!("Body: {}", body.to_string());
+    fn run_code(&self, problem: Problem, body: serde_json::Value) -> Result<serde_json::Value> {
         let url = &self.config()?.urls.submit.replace("$slug", &problem.slug);
         client::post(self, url, &body, || {
             let mut headers = HeaderMap::new();
@@ -249,8 +249,21 @@ impl<'a> Leetcode<'a> {
                 HeaderValue::from_str(&problem.link).unwrap(),
             );
             Some(headers)
-        })?;
-        Ok(())
+        })
+    }
+
+    fn verify_run_code(&self, submission: serde_json::Value) -> Result<serde_json::Value> {
+        loop {
+            let url = self
+                .config
+                .urls
+                .verify
+                .replace("$id", &submission["submission_id"].to_string());
+            let response = client::get(&url, None, self.session())?.json::<serde_json::Value>()?;
+            if response["state"] == "SUCCESS" {
+                return Ok(response);
+            }
+        }
     }
 }
 
@@ -447,10 +460,13 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let body = json!({
                 "lang":        problem.lang.to_owned(),
                 "question_id": problem.id,
-                "test_mode":   false,
+                "test_mode":   true,
                 "typed_code":  service::get_code(&problem),
         });
-        self.run_code(problem, body)?;
+        let response = self.run_code(problem, body)?;
+        let response = self.verify_run_code(response)?;
+        debug!("Verification result: {:#?}", response);
+
         Ok(())
     }
 
@@ -463,7 +479,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "typed_code":  service::get_code(&problem),
             "judge_type": "large",
         });
-        self.run_code(problem, body)?;
+        let sp = Spinner::new(Spinners::Dots9, "Submitting code!".into());
+        let response = self.run_code(problem, body)?;
+        let response = self.verify_run_code(response)?;
+        sp.stop();
+        println!("Submission Result: {:#?}", response);
         Ok(())
     }
 
