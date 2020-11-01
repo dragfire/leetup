@@ -260,7 +260,6 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     /// Use cache wherever necessary
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
         let problems_res: serde_json::value::Value;
-        self.cache.remove("problems".to_string())?;
         if let Some(ref val) = self.cache.get("problems".to_string())? {
             debug!("Fetching problems from cache...");
             problems_res = serde_json::from_str::<serde_json::value::Value>(val)?;

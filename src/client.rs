@@ -16,13 +16,28 @@ use reqwest::{
 use serde_json::json;
 
 /// Make a GET request
-pub fn get(url: &str, headers: Option<HeaderMap>, session: Option<&Session>) -> Result<Response> {
-    let mut client = Client::builder().cookie_store(true);
-    if let Some(headers) = headers {
-        client = client.default_headers(headers);
+pub fn get(
+    url: &str,
+    headers_opt: Option<HeaderMap>,
+    session: Option<&Session>,
+) -> Result<Response> {
+    let mut headers = HeaderMap::new();
+    if let Some(h) = headers_opt {
+        headers = HeaderMap::from(h);
     }
-    let client = client.build()?;
-    client.get(url).send().map_err(|e| e.into())
+
+    if let Some(session) = session {
+        let cookie: String = session.into();
+        headers.insert("Cookie", HeaderValue::from_str(&cookie).unwrap());
+        headers.insert("X-CSRFToken", HeaderValue::from_str(&session.csrf).unwrap());
+        headers.insert(
+            "X-Requested-With",
+            HeaderValue::from_static("XMLHttpRequest"),
+        );
+    }
+
+    let client = Client::builder().default_headers(headers).build()?;
+    client.get(url).send().map_err(LeetUpError::Reqwest)
 }
 
 /// Make a POST request

@@ -31,7 +31,7 @@ pub struct Problem {
     pub link: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Session {
     pub id: String,
     pub csrf: String,

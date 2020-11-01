@@ -3,16 +3,18 @@ use crate::{
     LeetUpError, Result,
 };
 use colci::Color;
-use log::{debug, error};
+use log::{debug, error, info};
 use regex::Regex;
 use reqwest::{
     blocking::{Body, Client, RequestBuilder, Response},
     header::HeaderMap,
     header::HeaderValue,
     header::CONTENT_TYPE,
+    header::COOKIE,
     header::SET_COOKIE,
     StatusCode,
 };
+use serde::{Deserialize, Serialize};
 use std::io::{BufWriter, Write};
 use std::str::FromStr;
 
@@ -50,9 +52,12 @@ fn capture_value(i: usize, re: Regex, text: &str) -> Result<String> {
 pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session> {
     let client_err = LeetUpError::Any(anyhow::anyhow!("Something went wrong!"));
     let config = provider.config()?;
-    let client = Client::builder().cookie_store(true).build()?;
+    let client = Client::builder()
+        .cookie_store(true)
+        .referer(true)
+        .redirect(reqwest::redirect::Policy::none()) // disable it: CookieStore does not play well with redirects.
+        .build()?;
     let res = client.get(&config.urls.github_login_request).send()?;
-    println!("Headers: {:#?}", res.headers());
     if res.status() != 200 {
         error!("Status: {}", res.status());
         return Err(client_err);
@@ -69,7 +74,6 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     let timestamp = capture_value(1, timestamp_re, text)?;
     let timestamp_secret_re = Regex::new("name=\"timestamp_secret\" value=\"(.*?)\"").unwrap();
     let timestamp_secret = capture_value(1, timestamp_secret_re, text)?;
-
     let user = User::get_from_stdin();
 
     let form = &[
@@ -86,46 +90,62 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         (req_field, "".to_string()),
     ];
 
-    let res = client
+    let mut res = client
         .post(&config.urls.github_session_request)
         .form(form)
         .send()?;
 
-    if res.status() != 200 {
+    if res.status() == 302 {
+        info!("Redirecting to: {}", res.url().as_str());
+        res = client.get(res.url().as_str()).send()?;
+    } else if res.status() != 200 {
         error!("Status: {}", res.status());
         return Err(client_err);
     }
-    println!("Headers: {:#?}", res.headers());
+    debug!("Headers: {:#?}", res.headers());
 
-    let res = client.get(&config.urls.github_login).send()?;
-    if res.status() != 200 {
-        error!("{:#?}", res);
+    res = client.get(&config.urls.github_login).send()?;
+    let mut session: Session = Default::default();
+    if res.status() == 302 {
+        // Due to some limitations with `reqwest`, I had to manually handle
+        // a few redirects to get `LEETCODE_SESSION` and `CSRFToken`
+        // Issue: https://github.com/seanmonstar/reqwest/issues/14
+        //
+        // Eventhough it supports CookieStore, it's not quite flexible to make
+        // it work the way I want it to be for LeetUp.
+        info!("Redirecting to: {}", res.url().as_str());
+        res = client.get(res.url().as_str()).send()?;
+        info!("Status: {}", res.status());
+        let location = res.headers().get("location").unwrap().to_str().unwrap();
+        info!("Redirecting to: {}", location);
+        res = client.get(location).send()?;
+        info!("Status: {}", res.status());
+
+        let location = res.headers().get("location").unwrap().to_str().unwrap();
+        info!("Redirecting to: {}", location);
+        res = client.get(location).send()?;
+        info!("Status: {}", res.status());
+
+        let cookies = res.cookies().collect::<Vec<_>>();
+        let mut cookie_raw = String::new();
+        for cookie in cookies.iter() {
+            let val = cookie.value();
+            let name = cookie.name();
+            match name {
+                "LEETCODE_SESSION" => {
+                    cookie_raw.push_str(&format!("{}={};", "LEETCODE_SESSION", val));
+                }
+                "csrftoken" => cookie_raw.push_str(&format!("{}={}; ", "csrftoken", val)),
+                _ => (),
+            }
+        }
+
+        session = Session::from_str(&cookie_raw).unwrap();
+        info!("Session: {:#?}", session);
+    } else if res.status() != 200 {
+        error!("Status: {}", res.status());
         return Err(client_err);
     }
 
-    println!("Headers: {:#?}", res.headers());
-
-    // let cookies = client.cookies().unwrap();
-    // let mut cookie_raw = String::new();
-    // for cookie in cookies.iter() {
-    //     let mut cookie = std::str::from_utf8(cookie).unwrap().rsplit("\t");
-    //     let val = cookie.next().unwrap();
-    //     let name = cookie.next().unwrap();
-    //     match name {
-    //         "LEETCODE_SESSION" => {
-    //             cookie_raw.push_str(&format!("{}={};", "LEETCODE_SESSION", val));
-    //         }
-    //         "csrftoken" => cookie_raw.push_str(&format!("{}={}; ", "csrftoken", val)),
-    //         _ => (),
-    //     }
-    // }
-
-    // // remove trailing semi-colon
-    // cookie_raw.pop();
-
-    // let session = Session::from_str(&cookie_raw).unwrap();
-    // debug!("Session: {:#?}", session);
-
-    // Ok(session)
-    unimplemented!()
+    Ok(session)
 }
