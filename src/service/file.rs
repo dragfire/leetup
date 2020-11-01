@@ -1,4 +1,4 @@
-use crate::fetch::Problem;
+use crate::service::Problem;
 use std::path::Path;
 
 pub fn extract_problem<P: AsRef<Path>>(filename: P) -> Problem {
