@@ -1,8 +1,10 @@
 use crate::{
+    client,
     cmd::{self, Command, List, OrderBy, Query, User},
-    fetch::{self, Problem},
     icon::Icon,
-    service::{self, auth, CommentStyle, Config, Lang, LangInfo, ServiceProvider, Session, Urls},
+    service::{
+        self, auth, CommentStyle, Config, Lang, LangInfo, Problem, ServiceProvider, Session, Urls,
+    },
     LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
@@ -239,7 +241,7 @@ impl<'a> Leetcode<'a> {
     fn run_code(&self, problem: Problem, body: serde_json::Value) -> Result<()> {
         debug!("Body: {}", body.to_string());
         let url = &self.config()?.urls.submit.replace("$slug", &problem.slug);
-        fetch::post(self, url, problem, body.to_string())?;
+        client::post(self, url, problem, body.to_string())?;
         Ok(())
     }
 }
@@ -258,16 +260,15 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     /// Use cache wherever necessary
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
         let problems_res: serde_json::value::Value;
-        self.cache.remove("problems".to_string())?;
         if let Some(ref val) = self.cache.get("problems".to_string())? {
             debug!("Fetching problems from cache...");
             problems_res = serde_json::from_str::<serde_json::value::Value>(val)?;
         } else {
             let url = &self.config.urls.problems_all;
             let session = self.session();
-            problems_res = fetch::get(url, None, session)?
+            problems_res = client::get(url, None, session)?
                 .json::<serde_json::value::Value>()
-                .map_err(LeetUpError::Serde)?;
+                .map_err(LeetUpError::Reqwest)?;
             let res_serialized = serde_json::to_string(&problems_res)?;
             self.cache.set("problems".to_string(), res_serialized)?;
         }
@@ -385,7 +386,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         debug!("Request body: {:#?}", body);
 
-        let response = fetch::post(self, &urls.graphql, problem, body.to_string())?;
+        let response = client::post(self, &urls.graphql, problem, body.to_string())?;
         debug!("Response: {:#?}", response);
 
         let mut definition = None;

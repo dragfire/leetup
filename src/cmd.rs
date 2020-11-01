@@ -1,6 +1,5 @@
 use crate::{
-    fetch::Problem,
-    service::{self, Lang, ServiceProvider},
+    service::{self, Lang, Problem, ServiceProvider},
     Result,
 };
 use log::debug;
