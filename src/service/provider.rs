@@ -23,7 +23,15 @@ pub trait ServiceProvider<'a> {
     fn name(&self) -> &'a str;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug)]
+pub struct Problem {
+    pub id: usize,
+    pub slug: String,
+    pub lang: String,
+    pub link: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Session {
     pub id: String,
     pub csrf: String,

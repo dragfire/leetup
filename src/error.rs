@@ -17,6 +17,9 @@ pub enum LeetUpError {
     /// Regex Error
     Regex(#[from] regex::Error),
 
+    /// Reqwest Error
+    Reqwest(#[from] reqwest::Error),
+
     /// Option None Error
     #[error("Tried to unwrap None")]
     OptNone,
