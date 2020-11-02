@@ -1,3 +1,4 @@
+![Rust](https://github.com/dragfire/leetup/workflows/Rust/badge.svg)
 # leetup
 Leetcode cli
 
