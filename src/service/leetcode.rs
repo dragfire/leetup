@@ -3,7 +3,8 @@ use crate::{
     cmd::{self, Command, List, OrderBy, Query, User},
     icon::Icon,
     service::{
-        self, auth, CommentStyle, Config, Lang, LangInfo, Problem, ServiceProvider, Session, Urls,
+        self, auth, CacheKey, CommentStyle, Config, Lang, LangInfo, Problem, ServiceProvider,
+        Session, Urls,
     },
     LeetUpError, Result,
 };
@@ -102,26 +103,47 @@ struct CodeDefinition {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+enum Either {
+    Sequence(Vec<String>),
+    String(String),
+}
+
+impl ToString for Either {
+    fn to_string(&self) -> String {
+        match self {
+            Either::String(s) => s.to_owned(),
+            Either::Sequence(v) => v.join("\n"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct SubmissionResult {
-    pub code_output: Option<String>,
+    pub code_output: Option<Either>,
+    pub code_answer: Option<Either>,
+    pub expected_code_output: Option<Either>,
+    pub expected_code_answer: Option<Either>,
     pub compare_result: Option<String>,
     pub compile_error: Option<String>,
     pub elapsed_time: u32,
     pub full_compile_error: Option<String>,
     pub lang: String,
-    pub memory: u32,
+    pub memory: Option<u32>,
     pub memory_percentile: Option<f32>,
     pub pretty_lang: String,
-    pub question_id: u32,
+    pub question_id: Option<u32>,
     pub run_success: bool,
     pub runtime_percentile: Option<f32>,
     pub state: String,
     pub status_code: u32,
+    pub expected_status_code: Option<u32>,
     pub status_memory: String,
     pub status_msg: String,
     pub status_runtime: String,
     pub submission_id: String,
     pub task_finish_time: i64,
+    pub expected_task_finish_time: Option<i64>,
     pub total_correct: Option<u32>,
     pub total_testcases: Option<u32>,
 }
@@ -247,13 +269,13 @@ impl<'a> Leetcode<'a> {
 
     fn cache_session(&mut self, session: Session) -> Result<()> {
         let session_str = serde_json::to_string(&session)?;
-        self.cache.set("session".to_string(), session_str)?;
+        self.cache.set(CacheKey::Session.into(), session_str)?;
         self.session = Some(session);
         // remove key `problems`, rebuild problems cache.
         //
         // NOTE: cache.remove throws "Key not found" error
         // so ignore that error if it is thrown.
-        if let Err(_) = self.cache.remove("problems".to_string()) {}
+        if let Err(_) = self.cache.remove(CacheKey::Problems.into()) {}
         Ok(())
     }
 
@@ -265,9 +287,14 @@ impl<'a> Leetcode<'a> {
         Ok(problems)
     }
 
-    fn run_code(&self, problem: Problem, body: serde_json::Value) -> Result<serde_json::Value> {
-        let url = &self.config()?.urls.submit.replace("$slug", &problem.slug);
-        client::post(self, url, &body, || {
+    fn run_code(
+        &self,
+        url: &str,
+        problem: &Problem,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let url = url.replace("$slug", &problem.slug);
+        client::post(self, &url, &body, || {
             let mut headers = HeaderMap::new();
             headers.insert(
                 header::REFERER,
@@ -277,24 +304,52 @@ impl<'a> Leetcode<'a> {
         })
     }
 
-    fn verify_run_code(&self, submission: serde_json::Value) -> Result<serde_json::Value> {
+    fn verify_run_code(&self, url: &str) -> Result<serde_json::Value> {
         loop {
-            let url = self
-                .config
-                .urls
-                .verify
-                .replace("$id", &submission["submission_id"].to_string());
-            let response = client::get(&url, None, self.session())?.json::<serde_json::Value>()?;
+            let response = client::get(url, None, self.session())?.json::<serde_json::Value>()?;
             if response["state"] == "SUCCESS" {
                 return Ok(response);
             }
+            std::thread::sleep(std::time::Duration::from_millis(200));
         }
     }
 
-    fn print_judge_result(&self, result: SubmissionResult) {
+    fn print_judge_result(
+        &self,
+        problem: &Problem,
+        test_data: Option<String>,
+        result: SubmissionResult,
+    ) {
         match result.status_code {
             10 => {
                 // Accepted
+
+                // Test result
+                if result.expected_status_code.is_some() {
+                    println!(
+                        "{}",
+                        Color::Green(&format!(
+                            r#"
+ {} {}
+Input:
+{}
+
+Output:
+{}
+
+Expected:
+{}
+                    "#,
+                            Icon::Yes.to_string(),
+                            result.status_msg,
+                            test_data.unwrap(),
+                            result.code_answer.unwrap().to_string(),
+                            result.expected_code_answer.unwrap().to_string(),
+                        ))
+                        .make()
+                    );
+                    return;
+                }
                 println!(
                     "{}",
                     Color::Green(&format!(
@@ -314,6 +369,31 @@ impl<'a> Leetcode<'a> {
                         result.memory_percentile.unwrap(),
                         result.lang,
                         result.status_memory
+                    ))
+                    .make()
+                );
+            }
+            15 => {
+                // Runtime error
+                println!(
+                    "{}",
+                    Color::Red(&format!(
+                        r#"
+ {} {}
+Input:
+{}
+
+Output:
+{}
+
+Expected:
+{}
+                    "#,
+                        Icon::_No.to_string(),
+                        result.status_msg,
+                        test_data.unwrap(),
+                        result.code_output.unwrap().to_string(),
+                        result.code_answer.unwrap().to_string(),
                     ))
                     .make()
                 );
@@ -339,7 +419,7 @@ impl<'a> Leetcode<'a> {
                         r#"
  {} {}
  {}/{} cases passed ({})
- Failed Test: {}
+ Failed Test: {:#?}
                     "#,
                         Icon::_No.to_string(),
                         result.status_msg,
@@ -369,7 +449,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     /// Use cache wherever necessary
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
         let problems_res: serde_json::value::Value;
-        if let Some(ref val) = self.cache.get("problems".to_string())? {
+        if let Some(ref val) = self.cache.get(CacheKey::Problems.into())? {
             debug!("Fetching problems from cache...");
             problems_res = serde_json::from_str::<serde_json::value::Value>(val)?;
         } else {
@@ -379,7 +459,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 .json::<serde_json::value::Value>()
                 .map_err(LeetUpError::Reqwest)?;
             let res_serialized = serde_json::to_string(&problems_res)?;
-            self.cache.set("problems".to_string(), res_serialized)?;
+            self.cache.set(CacheKey::Problems.into(), res_serialized)?;
         }
 
         Ok(problems_res)
@@ -546,15 +626,26 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     fn problem_test(&self, test: cmd::Test) -> Result<()> {
         let problem = service::extract_problem(test.filename)?;
+        let test_data = test.test_data.replace("\\n", "\n");
         let body = json!({
                 "lang":        problem.lang.to_owned(),
                 "question_id": problem.id,
                 "test_mode":   true,
-                "typed_code":  problem.typed_code.as_ref().unwrap()
+                "typed_code":  problem.typed_code.as_ref().unwrap(),
+                "data_input":  test_data,
+                "judge_type":  "large"
         });
-        let response = self.run_code(problem, body)?;
-        let response = self.verify_run_code(response)?;
-        debug!("Verification result: {:#?}", response);
+        let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
+        let url = &self.config()?.urls.test;
+        let response = self.run_code(url, &problem, body)?;
+        let url = self
+            .config
+            .urls
+            .verify
+            .replace("$id", &response["interpret_id"].as_str().unwrap());
+        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
+        sp.stop();
+        self.print_judge_result(&problem, Some(test_data), result);
 
         Ok(())
     }
@@ -569,10 +660,18 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "judge_type": "large",
         });
         let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
-        let response = self.run_code(problem, body)?;
-        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(response)?)?;
+        let url = &self.config()?.urls.submit;
+        let response = self.run_code(url, &problem, body)?;
+        let url = self
+            .config
+            .urls
+            .verify
+            .replace("$id", &response["submission_id"].to_string());
+        info!("URL: {}", url);
+        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
+        print!("\r            ");
         sp.stop();
-        self.print_judge_result(result);
+        self.print_judge_result(&problem, None, result);
 
         Ok(())
     }
@@ -611,11 +710,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         }
 
         if user.logout.is_some() {
-            if let Err(_) = self.cache.remove("session".to_string()) {
+            if let Err(_) = self.cache.remove(CacheKey::Session.into()) {
                 println!("User not logged in!");
                 return Ok(());
             }
-            if let Err(_) = self.cache.remove("problems".to_string()) {}
+            if let Err(_) = self.cache.remove(CacheKey::Problems.into()) {}
             println!("User logged out!");
         }
 

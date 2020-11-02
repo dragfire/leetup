@@ -32,6 +32,22 @@ pub struct Problem {
     pub typed_code: Option<String>,
 }
 
+pub enum CacheKey<'a> {
+    Session,
+    Problems,
+    Problem(&'a str),
+}
+
+impl<'a> From<CacheKey<'_>> for String {
+    fn from(key: CacheKey) -> Self {
+        match key {
+            CacheKey::Session => "session".to_string(),
+            CacheKey::Problems => "problems".to_string(),
+            CacheKey::Problem(id) => format!("problem_{}", id),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Session {
     pub id: String,

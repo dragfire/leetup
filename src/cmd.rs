@@ -72,7 +72,7 @@ pub struct Test {
 
     /// Custom test cases.
     #[structopt(short)]
-    pub test: String,
+    pub test_data: String,
 }
 
 #[derive(Debug, StructOpt)]
