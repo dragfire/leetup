@@ -12,7 +12,7 @@ keywords = ["cli", "leetcode"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-cache = { path = "./cache" }
+cache = { path = "./cache", version = "0.1.0"}
 clap = "2.33.1"
 structopt = "0.3.15"
 thiserror = "1.0.20"
