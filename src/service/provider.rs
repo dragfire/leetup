@@ -3,8 +3,8 @@ use crate::{
     cmd::{self, Command, User},
     Result,
 };
-use cache::kvstore::KvStore;
 use cookie::Cookie;
+use leetup_cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
