@@ -10,9 +10,9 @@ use crate::{
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
-use cache::kvstore::KvStore;
 use colci::Color;
 use html2text::from_read;
+use leetup_cache::kvstore::KvStore;
 use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
