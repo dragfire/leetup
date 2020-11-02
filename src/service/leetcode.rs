@@ -243,15 +243,14 @@ impl<'a> Leetcode<'a> {
         let name = "leetcode";
         let config = Config::new(urls);
 
-        // create a data directory: ./data/leetcode/*.log
+        // create .leetup directory: ~/.leetup/*.log
         let mut data_dir = PathBuf::new();
-        data_dir.push(env::current_dir().unwrap());
-        data_dir.push("data");
-        data_dir.push("leetcode");
+        data_dir.push(dirs::home_dir().expect("Home directory not available!"));
+        data_dir.push(".leetup");
 
         let mut cache = KvStore::open(data_dir).unwrap();
         let mut session: Option<Session> = None;
-        let session_val = cache.get("session".to_string()).unwrap();
+        let session_val = cache.get(CacheKey::Session.into()).unwrap();
 
         // Set session if the user is logged in
         if let Some(ref val) = session_val {
