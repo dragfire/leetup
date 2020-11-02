@@ -1,5 +1,5 @@
 [package]
-name = "cache"
+name = "leetup-cache"
 version = "0.1.0"
 authors = ["dragfire <asem.devajit@gmail.com>"]
 edition = "2018"
