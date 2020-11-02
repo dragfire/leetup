@@ -7,6 +7,7 @@ Leetcode cli
 cargo install leetup
 ```
 
+## Usage:
 <img src="assets/progress3.png" alt="Leetup" width="600"/>
 
 <img src="assets/progress2.png" alt="Leetup" width="600"/>
