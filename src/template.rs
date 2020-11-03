@@ -1,3 +1,4 @@
+#[derive(Copy, Clone)]
 pub enum Pattern {
     LeetUpInfo,
     CustomCode,
@@ -7,10 +8,22 @@ pub enum Pattern {
 impl From<Pattern> for String {
     fn from(p: Pattern) -> Self {
         match p {
-            Pattern::LeetUpInfo => "// @leetup=info".into(),
-            Pattern::CustomCode => "// @leetup=custom".into(),
-            Pattern::Code => "// @leetup=code".into(),
+            Pattern::LeetUpInfo => "@leetup=info".into(),
+            Pattern::CustomCode => "@leetup=custom".into(),
+            Pattern::Code => "@leetup=code".into(),
         }
+    }
+}
+
+impl<'a> From<&'a Pattern> for String {
+    fn from(p: &Pattern) -> Self {
+        String::from(*p)
+    }
+}
+
+impl ToString for Pattern {
+    fn to_string(&self) -> String {
+        String::from(*self)
     }
 }
 
@@ -29,8 +42,15 @@ pub fn parse_code(code: &str) -> Option<String> {
 
     let code = code.get(start_index..)?;
 
-    let end_index = code.find(&code_pattern).unwrap_or(code.len());
-    let code = code.get(..end_index - 1)?;
+    let end_index = match code.find(&code_pattern) {
+        Some(index) => {
+            let code = &code[..index];
+            let index = code.rfind("\n").unwrap();
+            index + 1
+        }
+        None => code.len(),
+    };
+    let code = code.get(..end_index)?;
 
     Some(code.into())
 }
@@ -113,7 +133,8 @@ impl Solution {
 
         vec![]
     }
-}"#;
+}
+"#;
 
     let actual_code = parse_code(code);
     assert_eq!(actual_code, Some(expected_code.into()));
@@ -160,7 +181,8 @@ impl Solution {
 
         vec![]
     }
-}"#;
+}
+"#;
 
     let actual_code = parse_code(code);
     assert_eq!(actual_code, Some(expected_code.into()));
