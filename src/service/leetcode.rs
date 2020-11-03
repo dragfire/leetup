@@ -6,7 +6,7 @@ use crate::{
         self, auth, CacheKey, CommentStyle, Config, Lang, LangInfo, Problem, ServiceProvider,
         Session, Urls,
     },
-    LeetUpError, Result,
+    template, LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
@@ -585,9 +585,17 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 .map(|s| format!("// {}", s))
                 .collect::<Vec<String>>()
                 .join("\n");
+            let pattern_custom: String = template::Pattern::CustomCode.into();
+            let pattern_leetup_info: String = template::Pattern::LeetUpInfo.into();
             let content = format!(
-                "// @leetup id={} lang={} slug={}\n\n{}",
-                problem_id, lang.name, slug, content
+                "{}\n{} id={} lang={} slug={}\n\n{}\n{}",
+                pattern_custom,
+                pattern_leetup_info,
+                problem_id,
+                lang.name,
+                slug,
+                content,
+                pattern_custom
             );
             debug!("Content: {}", content);
             definition = Some(content);
@@ -608,10 +616,14 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             if let Some(definition) = definition {
                 writer.write_all(definition.as_bytes())?;
             }
+            let pattern_code: String = template::Pattern::Code.into();
+            let pattern_code = format!("\n{}\n", pattern_code);
             let code = &code_defs.get(&lang.name).unwrap().default_code;
             debug!("Code: {}", code);
             writer.write(b"\n\n\n")?;
+            writer.write(pattern_code.as_bytes())?;
             writer.write_all(code.as_bytes())?;
+            writer.write(pattern_code.as_bytes())?;
             writer.flush()?;
             println!(
                 "Generated: {}",
@@ -629,7 +641,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 "lang":        problem.lang.to_owned(),
                 "question_id": problem.id,
                 "test_mode":   true,
-                "typed_code":  problem.typed_code.as_ref().unwrap(),
+                "typed_code":  template::parse_code(problem.typed_code.as_ref().unwrap()),
                 "data_input":  test_data,
                 "judge_type":  "large"
         });
@@ -652,7 +664,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "lang":        problem.lang.to_owned(),
             "question_id": problem.id,
             "test_mode":   false,
-            "typed_code":  problem.typed_code.as_ref().unwrap(),
+            "typed_code":  template::parse_code(problem.typed_code.as_ref().unwrap()),
             "judge_type": "large",
         });
         let url = &self.config()?.urls.submit;

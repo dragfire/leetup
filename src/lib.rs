@@ -6,3 +6,4 @@ pub mod cmd;
 mod error;
 pub mod icon;
 pub mod service;
+pub mod template;
