@@ -11,9 +11,6 @@ env:
 
 jobs:
   publish:
-    name: Set Tag
-      id: vars
-      run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
     name: Publish for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -21,13 +18,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: leetup
-            asset_name: leetup${{ publish.vars.outputs.tag }}-linux-amd64.sh
+            asset_name: leetup${{ GITHUB_REF#refs/*/ }}-linux-amd64.sh
           - os: windows-latest
             artifact_name: leetup.exe
-            asset_name: leetup${{ publish.vars.outputs.tag }}-windows-amd64.exe
+            asset_name: leetup${{ GITHUB_REF#refs/*/ }}-windows-amd64.exe
           - os: macos-latest
             artifact_name: leetup
-            asset_name: leetup${{ publish.vars.outputs.tag }}-macos-amd64
+            asset_name: leetup${{ GITHUB_REF#refs/*/ }}-macos-amd64
     steps:
     - uses: actions/checkout@v2
       with:
