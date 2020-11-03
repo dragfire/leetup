@@ -14,6 +14,7 @@ use reqwest::{
     header::SET_COOKIE,
     StatusCode,
 };
+use spinners::{Spinner, Spinners};
 use std::io::{BufWriter, Write};
 use std::str::FromStr;
 
@@ -74,6 +75,7 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     let timestamp_secret_re = Regex::new("name=\"timestamp_secret\" value=\"(.*?)\"").unwrap();
     let timestamp_secret = capture_value(1, timestamp_secret_re, text)?;
     let user = User::get_from_stdin();
+    let sp = Spinner::new(Spinners::Dots9, "Logging in...".into());
 
     let form = &[
         ("login", user.id),
@@ -145,6 +147,7 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         error!("Status: {}", res.status());
         return Err(client_err);
     }
+    sp.stop();
 
     Ok(session)
 }
