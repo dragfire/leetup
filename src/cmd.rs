@@ -3,6 +3,7 @@ use crate::{
     Result,
 };
 use log::debug;
+use spinners::{Spinner, Spinners};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -202,10 +203,14 @@ pub fn process() -> Result<()> {
             provider.process_auth(user)?;
         }
         Command::Submit(submit) => {
+            let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
             provider.problem_submit(submit)?;
+            sp.stop();
         }
         Command::Test(test) => {
+            let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
             provider.problem_test(test)?;
+            sp.stop();
         }
     }
     Ok(())

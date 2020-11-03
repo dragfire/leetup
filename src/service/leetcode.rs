@@ -17,7 +17,6 @@ use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use spinners::{Spinner, Spinners};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::env;
@@ -634,7 +633,6 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 "data_input":  test_data,
                 "judge_type":  "large"
         });
-        let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
         let url = &self.config()?.urls.test;
         let response = self.run_code(url, &problem, body)?;
         let url = self
@@ -643,7 +641,6 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .verify
             .replace("$id", &response["interpret_id"].as_str().unwrap());
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
-        sp.stop();
         self.print_judge_result(&problem, Some(test_data), result);
 
         Ok(())
@@ -658,7 +655,6 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "typed_code":  problem.typed_code.as_ref().unwrap(),
             "judge_type": "large",
         });
-        let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
         let url = &self.config()?.urls.submit;
         let response = self.run_code(url, &problem, body)?;
         let url = self
@@ -666,10 +662,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .urls
             .verify
             .replace("$id", &response["submission_id"].to_string());
-        info!("URL: {}", url);
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
-        print!("\r            ");
-        sp.stop();
         self.print_judge_result(&problem, None, result);
 
         Ok(())
@@ -699,11 +692,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         if let Some(_) = user.github {
             match auth::github_login(self) {
                 Ok(session) => {
-                    println!("{}", Color::Green("User logged in!").make());
+                    println!("\n{}", Color::Green("User logged in!").make());
                     self.cache_session(session)?;
                 }
                 Err(_) => {
-                    println!("{}", Color::Red("Github login failed!").make());
+                    println!("\n{}", Color::Red("Github login failed!").make());
                 }
             }
         }
