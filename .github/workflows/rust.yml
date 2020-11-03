@@ -19,13 +19,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: leetup
-            asset_name: leetup${{ GITHUB_REF#refs/*/ }}-linux-amd64.sh
+            asset_name: leetup${GITHUB_REF#refs/*/}-linux-amd64.sh
           - os: windows-latest
             artifact_name: leetup.exe
-            asset_name: leetup${{ GITHUB_REF#refs/*/ }}-windows-amd64.exe
+            asset_name: leetup${GITHUB_REF#refs/*/}-windows-amd64.exe
           - os: macos-latest
             artifact_name: leetup
-            asset_name: leetup${{ GITHUB_REF#refs/*/ }}-macos-amd64
+            asset_name: leetup${GITHUB_REF#refs/*/}-macos-amd64
     steps:
     - uses: actions/checkout@v2
       with:
