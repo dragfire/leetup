@@ -223,31 +223,14 @@ pub struct Leetcode<'a> {
 
 impl<'a> Leetcode<'a> {
     pub fn new() -> Self {
-        let base = "https://leetcode.com";
-        let urls = Urls {
-            base: base.to_owned(),
-            api: format!("{}/api", base),
-            graphql: format!("{}/graphql", base),
-            problems: format!("{}/problems/", base),
-            problems_all: format!("{}/api/problems/all", base),
-            github_login: format!("{}/accounts/github/login/?next=%2F", base),
-            github_login_request: "https://github.com/login".to_string(),
-            github_session_request: "https://github.com/session".to_string(),
-            test: format!("{}/problems/$slug/interpret_solution/", base),
-            submit: format!("{}/problems/$slug/submit/", base),
-            submissions: format!("{}/api/submissions/$slug", base),
-            submission: format!("{}/submissions/detail/$id", base),
-            verify: format!("{}/submissions/detail/$id/check/", base),
-        };
         let name = "leetcode";
-        let config = Config::new(urls);
 
         // create .leetup directory: ~/.leetup/*.log
         let mut data_dir = PathBuf::new();
         data_dir.push(dirs::home_dir().expect("Home directory not available!"));
         data_dir.push(".leetup");
 
-        let mut cache = KvStore::open(data_dir).unwrap();
+        let mut cache = KvStore::open(&data_dir).unwrap();
         let mut session: Option<Session> = None;
         let session_val = cache.get(CacheKey::Session.into()).unwrap();
 
@@ -256,6 +239,7 @@ impl<'a> Leetcode<'a> {
             session =
                 Some(serde_json::from_str::<Session>(val).expect("Session format not correct"));
         }
+        let config = Config::get(data_dir);
 
         Leetcode {
             session,
