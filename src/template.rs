@@ -1,3 +1,4 @@
+#[derive(Copy, Clone)]
 pub enum Pattern {
     LeetUpInfo,
     CustomCode,
@@ -14,15 +15,15 @@ impl From<Pattern> for String {
     }
 }
 
-impl From<&'_ Pattern> for String {
+impl<'a> From<&'a Pattern> for String {
     fn from(p: &Pattern) -> Self {
-        p.into()
+        String::from(*p)
     }
 }
 
 impl ToString for Pattern {
     fn to_string(&self) -> String {
-        self.into()
+        String::from(*self)
     }
 }
 
