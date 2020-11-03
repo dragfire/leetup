@@ -42,8 +42,15 @@ pub fn parse_code(code: &str) -> Option<String> {
 
     let code = code.get(start_index..)?;
 
-    let end_index = code.find(&code_pattern).unwrap_or(code.len());
-    let code = code.get(..end_index - 1)?;
+    let end_index = match code.find(&code_pattern) {
+        Some(index) => {
+            let code = &code[..index];
+            let index = code.rfind("\n").unwrap();
+            index + 1
+        }
+        None => code.len(),
+    };
+    let code = code.get(..end_index)?;
 
     Some(code.into())
 }
@@ -126,7 +133,8 @@ impl Solution {
 
         vec![]
     }
-}"#;
+}
+"#;
 
     let actual_code = parse_code(code);
     assert_eq!(actual_code, Some(expected_code.into()));
@@ -173,7 +181,8 @@ impl Solution {
 
         vec![]
     }
-}"#;
+}
+"#;
 
     let actual_code = parse_code(code);
     assert_eq!(actual_code, Some(expected_code.into()));

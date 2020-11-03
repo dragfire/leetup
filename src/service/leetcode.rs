@@ -335,6 +335,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()> {
         let probs = self.fetch_problems()?;
         let urls = &self.config.urls;
+        let mut single_comment = "";
         let lang = match pick.lang.clone() {
             Lang::Rust(info) => info,
             Lang::Java(info) => info,
@@ -343,8 +344,12 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             Lang::MySQL(info) => info,
         };
 
+        // TODO should have Single and Multiline comment available?
         let comment = match &lang.comment {
             Comment::C(single, multi) => {
+                if let CommentStyle::Single(s) = single {
+                    single_comment = s;
+                }
                 if multi.is_some() {
                     multi.as_ref().unwrap()
                 } else {
@@ -354,6 +359,12 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             Comment::Python3(single, _) => single,
             Comment::MySQL(single, _) => single,
         };
+
+        if let CommentStyle::Single(s) = comment {
+            single_comment = s;
+        }
+
+        info!("Comment: {:#?}", comment);
 
         let problem: Problem = probs
             .iter()
@@ -422,9 +433,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 .map(|s| format!("{} {}", line_comment, s))
                 .collect::<Vec<String>>()
                 .join("\n");
-            let pattern_custom = format!("{} {}", line_comment, Pattern::CustomCode.to_string());
+            info!("Single Comment: {}", single_comment);
+
+            let pattern_custom = format!("{} {}", single_comment, Pattern::CustomCode.to_string());
             let pattern_leetup_info =
-                format!("{} {}", line_comment, Pattern::LeetUpInfo.to_string());
+                format!("{} {}", single_comment, Pattern::LeetUpInfo.to_string());
             let content = format!(
                 "{}\n{} id={} lang={} slug={}\n\n{}\n{}\n{}\n{}",
                 pattern_custom,
@@ -456,7 +469,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             if let Some(definition) = definition {
                 writer.write_all(definition.as_bytes())?;
             }
-            let pattern_code = format!("\n{} {}\n", line_comment, Pattern::Code.to_string());
+            let pattern_code = format!("\n{} {}\n", single_comment, Pattern::Code.to_string());
             let code = &code_defs.get(&lang.name).unwrap().default_code;
             debug!("Code: {}", code);
             writer.write(b"\n\n\n")?;
