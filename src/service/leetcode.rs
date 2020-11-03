@@ -3,10 +3,11 @@ use crate::{
     cmd::{self, Command, List, OrderBy, Query, User},
     icon::Icon,
     service::{
-        self, auth, CacheKey, CommentStyle, Config, Lang, LangInfo, Problem, ServiceProvider,
-        Session, Urls,
+        self, auth, CacheKey, Comment, CommentStyle, Config, Lang, LangInfo, Problem,
+        ServiceProvider, Session, Urls,
     },
-    template, LeetUpError, Result,
+    template::{parse_code, Pattern},
+    LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
@@ -25,184 +26,6 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::path::PathBuf;
 use std::str::FromStr;
-
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Difficulty {
-    pub level: usize,
-}
-
-impl ToString for Difficulty {
-    fn to_string(&self) -> String {
-        match self.level {
-            1 => Green.paint(String::from("Easy")).to_string(),
-            2 => Yellow.paint(String::from("Medium")).to_string(),
-            3 => Red.paint(String::from("Hard")).to_string(),
-            _ => String::from("UnknownLevel"),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Stat {
-    pub question_id: usize,
-
-    #[serde(rename = "question__article__live")]
-    pub question_article_live: Option<bool>,
-
-    #[serde(rename = "question__article__slug")]
-    pub question_article_slug: Option<String>,
-
-    #[serde(rename = "question__title")]
-    pub question_title: String,
-
-    #[serde(rename = "question__title_slug")]
-    pub question_title_slug: String,
-
-    #[serde(rename = "question__hide")]
-    pub question_hide: bool,
-
-    pub total_acs: usize,
-    pub total_submitted: usize,
-    pub frontend_question_id: usize,
-    pub is_new_question: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct StatStatusPair {
-    pub stat: Stat,
-    pub status: Option<String>,
-    pub difficulty: Difficulty,
-    pub paid_only: bool,
-    pub is_favor: bool,
-    pub frequency: isize,
-    pub progress: isize,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ListResponse {
-    pub user_name: String,
-    pub num_solved: usize,
-    pub num_total: usize,
-    pub ac_easy: usize,
-    pub ac_medium: usize,
-    pub ac_hard: usize,
-    pub stat_status_pairs: Vec<StatStatusPair>,
-    pub frequency_high: usize,
-    pub frequency_mid: usize,
-    pub category_slug: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct CodeDefinition {
-    value: String,
-    text: String,
-
-    #[serde(rename = "defaultCode")]
-    default_code: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(untagged)]
-enum Either {
-    Sequence(Vec<String>),
-    String(String),
-}
-
-impl ToString for Either {
-    fn to_string(&self) -> String {
-        match self {
-            Either::String(s) => s.to_owned(),
-            Either::Sequence(v) => v.join("\n"),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct SubmissionResult {
-    pub code_output: Option<Either>,
-    pub code_answer: Option<Either>,
-    pub expected_code_output: Option<Either>,
-    pub expected_code_answer: Option<Either>,
-    pub compare_result: Option<String>,
-    pub compile_error: Option<String>,
-    pub elapsed_time: u32,
-    pub full_compile_error: Option<String>,
-    pub lang: String,
-    pub memory: Option<u32>,
-    pub memory_percentile: Option<f32>,
-    pub pretty_lang: String,
-    pub question_id: Option<u32>,
-    pub run_success: bool,
-    pub runtime_percentile: Option<f32>,
-    pub state: String,
-    pub status_code: u32,
-    pub expected_status_code: Option<u32>,
-    pub status_memory: String,
-    pub status_msg: String,
-    pub status_runtime: String,
-    pub submission_id: String,
-    pub task_finish_time: i64,
-    pub expected_task_finish_time: Option<i64>,
-    pub total_correct: Option<u32>,
-    pub total_testcases: Option<u32>,
-}
-
-fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
-    for obj in probs {
-        let qstat = &obj.stat;
-
-        let starred_icon = if obj.is_favor {
-            Yellow.paint(Icon::Star.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        let locked_icon = if obj.paid_only {
-            Red.paint(Icon::Lock.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        let acd = if obj.status.is_some() {
-            Green.paint(Icon::Yes.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        println!(
-            "{} {:2} {} [{:^4}] {:75} {:6}",
-            starred_icon,
-            locked_icon,
-            acd,
-            qstat.question_id,
-            qstat.question_title,
-            obj.difficulty.to_string()
-        );
-    }
-}
-
-fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
-    let mut is_satisfied = true;
-
-    for q in queries {
-        match q {
-            Query::Easy => is_satisfied &= o.difficulty.level == 1,
-            Query::NotEasy => is_satisfied &= o.difficulty.level != 1,
-            Query::Medium => is_satisfied &= o.difficulty.level == 2,
-            Query::NotMedium => is_satisfied &= o.difficulty.level != 2,
-            Query::Hard => is_satisfied &= o.difficulty.level == 3,
-            Query::NotHard => is_satisfied &= o.difficulty.level != 3,
-            Query::Locked => is_satisfied &= o.paid_only,
-            Query::Unlocked => is_satisfied &= !o.paid_only,
-            Query::Done => is_satisfied &= o.status.is_some(),
-            Query::NotDone => is_satisfied &= o.status.is_none(),
-            Query::Starred => is_satisfied &= o.is_favor,
-            Query::Unstarred => is_satisfied &= !o.is_favor,
-        }
-    }
-
-    is_satisfied
-}
 
 /// Leetcode holds all attributes required to implement ServiceProvider trait.
 pub struct Leetcode<'a> {
@@ -519,6 +342,19 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             Lang::Python3(info) => info,
             Lang::MySQL(info) => info,
         };
+
+        let comment = match &lang.comment {
+            Comment::C(single, multi) => {
+                if multi.is_some() {
+                    multi.as_ref().unwrap()
+                } else {
+                    single
+                }
+            }
+            Comment::Python3(single, _) => single,
+            Comment::MySQL(single, _) => single,
+        };
+
         let problem: Problem = probs
             .iter()
             .find(|item| item.stat.question_id == pick.id.unwrap())
@@ -560,25 +396,45 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         debug!("Response: {:#?}", response);
 
         let mut definition = None;
+        let mut start_comment = "";
+        let line_comment;
+        let mut end_comment = "";
+        match comment {
+            CommentStyle::Single(s) => {
+                line_comment = s;
+            }
+            CommentStyle::Multiline {
+                start,
+                between,
+                end,
+            } => {
+                start_comment = start;
+                line_comment = between;
+                end_comment = end;
+            }
+        };
 
         if let Some(content) = &response["data"]["question"]["content"].as_str() {
             let content = from_read(content.as_bytes(), 80);
             let content = content.replace("**", "");
             let content = content
                 .split('\n')
-                .map(|s| format!("// {}", s))
+                .map(|s| format!("{} {}", line_comment, s))
                 .collect::<Vec<String>>()
                 .join("\n");
-            let pattern_custom: String = template::Pattern::CustomCode.into();
-            let pattern_leetup_info: String = template::Pattern::LeetUpInfo.into();
+            let pattern_custom = format!("{} {}", line_comment, Pattern::CustomCode.to_string());
+            let pattern_leetup_info =
+                format!("{} {}", line_comment, Pattern::LeetUpInfo.to_string());
             let content = format!(
-                "{}\n{} id={} lang={} slug={}\n\n{}\n{}",
+                "{}\n{} id={} lang={} slug={}\n\n{}\n{}\n{}\n{}",
                 pattern_custom,
                 pattern_leetup_info,
                 problem_id,
                 lang.name,
                 slug,
+                start_comment,
                 content,
+                end_comment,
                 pattern_custom
             );
             debug!("Content: {}", content);
@@ -600,8 +456,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             if let Some(definition) = definition {
                 writer.write_all(definition.as_bytes())?;
             }
-            let pattern_code: String = template::Pattern::Code.into();
-            let pattern_code = format!("\n{}\n", pattern_code);
+            let pattern_code = format!("\n{} {}\n", line_comment, Pattern::Code.to_string());
             let code = &code_defs.get(&lang.name).unwrap().default_code;
             debug!("Code: {}", code);
             writer.write(b"\n\n\n")?;
@@ -625,7 +480,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 "lang":        problem.lang.to_owned(),
                 "question_id": problem.id,
                 "test_mode":   true,
-                "typed_code":  template::parse_code(problem.typed_code.as_ref().unwrap()),
+                "typed_code":  parse_code(problem.typed_code.as_ref().unwrap()),
                 "data_input":  test_data,
                 "judge_type":  "large"
         });
@@ -648,7 +503,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "lang":        problem.lang.to_owned(),
             "question_id": problem.id,
             "test_mode":   false,
-            "typed_code":  template::parse_code(problem.typed_code.as_ref().unwrap()),
+            "typed_code":  parse_code(problem.typed_code.as_ref().unwrap()),
             "judge_type": "large",
         });
         let url = &self.config()?.urls.submit;
@@ -716,4 +571,182 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn name(&self) -> &'a str {
         self.name
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Difficulty {
+    pub level: usize,
+}
+
+impl ToString for Difficulty {
+    fn to_string(&self) -> String {
+        match self.level {
+            1 => Green.paint(String::from("Easy")).to_string(),
+            2 => Yellow.paint(String::from("Medium")).to_string(),
+            3 => Red.paint(String::from("Hard")).to_string(),
+            _ => String::from("UnknownLevel"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Stat {
+    pub question_id: usize,
+
+    #[serde(rename = "question__article__live")]
+    pub question_article_live: Option<bool>,
+
+    #[serde(rename = "question__article__slug")]
+    pub question_article_slug: Option<String>,
+
+    #[serde(rename = "question__title")]
+    pub question_title: String,
+
+    #[serde(rename = "question__title_slug")]
+    pub question_title_slug: String,
+
+    #[serde(rename = "question__hide")]
+    pub question_hide: bool,
+
+    pub total_acs: usize,
+    pub total_submitted: usize,
+    pub frontend_question_id: usize,
+    pub is_new_question: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct StatStatusPair {
+    pub stat: Stat,
+    pub status: Option<String>,
+    pub difficulty: Difficulty,
+    pub paid_only: bool,
+    pub is_favor: bool,
+    pub frequency: isize,
+    pub progress: isize,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ListResponse {
+    pub user_name: String,
+    pub num_solved: usize,
+    pub num_total: usize,
+    pub ac_easy: usize,
+    pub ac_medium: usize,
+    pub ac_hard: usize,
+    pub stat_status_pairs: Vec<StatStatusPair>,
+    pub frequency_high: usize,
+    pub frequency_mid: usize,
+    pub category_slug: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CodeDefinition {
+    value: String,
+    text: String,
+
+    #[serde(rename = "defaultCode")]
+    default_code: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+enum Either {
+    Sequence(Vec<String>),
+    String(String),
+}
+
+impl ToString for Either {
+    fn to_string(&self) -> String {
+        match self {
+            Either::String(s) => s.to_owned(),
+            Either::Sequence(v) => v.join("\n"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SubmissionResult {
+    pub code_output: Option<Either>,
+    pub code_answer: Option<Either>,
+    pub expected_code_output: Option<Either>,
+    pub expected_code_answer: Option<Either>,
+    pub compare_result: Option<String>,
+    pub compile_error: Option<String>,
+    pub elapsed_time: u32,
+    pub full_compile_error: Option<String>,
+    pub lang: String,
+    pub memory: Option<u32>,
+    pub memory_percentile: Option<f32>,
+    pub pretty_lang: String,
+    pub question_id: Option<u32>,
+    pub run_success: bool,
+    pub runtime_percentile: Option<f32>,
+    pub state: String,
+    pub status_code: u32,
+    pub expected_status_code: Option<u32>,
+    pub status_memory: String,
+    pub status_msg: String,
+    pub status_runtime: String,
+    pub submission_id: String,
+    pub task_finish_time: i64,
+    pub expected_task_finish_time: Option<i64>,
+    pub total_correct: Option<u32>,
+    pub total_testcases: Option<u32>,
+}
+
+fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
+    for obj in probs {
+        let qstat = &obj.stat;
+
+        let starred_icon = if obj.is_favor {
+            Yellow.paint(Icon::Star.to_string()).to_string()
+        } else {
+            Icon::Empty.to_string()
+        };
+
+        let locked_icon = if obj.paid_only {
+            Red.paint(Icon::Lock.to_string()).to_string()
+        } else {
+            Icon::Empty.to_string()
+        };
+
+        let acd = if obj.status.is_some() {
+            Green.paint(Icon::Yes.to_string()).to_string()
+        } else {
+            Icon::Empty.to_string()
+        };
+
+        println!(
+            "{} {:2} {} [{:^4}] {:75} {:6}",
+            starred_icon,
+            locked_icon,
+            acd,
+            qstat.question_id,
+            qstat.question_title,
+            obj.difficulty.to_string()
+        );
+    }
+}
+
+fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
+    let mut is_satisfied = true;
+
+    for q in queries {
+        match q {
+            Query::Easy => is_satisfied &= o.difficulty.level == 1,
+            Query::NotEasy => is_satisfied &= o.difficulty.level != 1,
+            Query::Medium => is_satisfied &= o.difficulty.level == 2,
+            Query::NotMedium => is_satisfied &= o.difficulty.level != 2,
+            Query::Hard => is_satisfied &= o.difficulty.level == 3,
+            Query::NotHard => is_satisfied &= o.difficulty.level != 3,
+            Query::Locked => is_satisfied &= o.paid_only,
+            Query::Unlocked => is_satisfied &= !o.paid_only,
+            Query::Done => is_satisfied &= o.status.is_some(),
+            Query::NotDone => is_satisfied &= o.status.is_none(),
+            Query::Starred => is_satisfied &= o.is_favor,
+            Query::Unstarred => is_satisfied &= !o.is_favor,
+        }
+    }
+
+    is_satisfied
 }

@@ -7,10 +7,22 @@ pub enum Pattern {
 impl From<Pattern> for String {
     fn from(p: Pattern) -> Self {
         match p {
-            Pattern::LeetUpInfo => "// @leetup=info".into(),
-            Pattern::CustomCode => "// @leetup=custom".into(),
-            Pattern::Code => "// @leetup=code".into(),
+            Pattern::LeetUpInfo => "@leetup=info".into(),
+            Pattern::CustomCode => "@leetup=custom".into(),
+            Pattern::Code => "@leetup=code".into(),
         }
+    }
+}
+
+impl From<&'_ Pattern> for String {
+    fn from(p: &Pattern) -> Self {
+        p.into()
+    }
+}
+
+impl ToString for Pattern {
+    fn to_string(&self) -> String {
+        self.into()
     }
 }
 
