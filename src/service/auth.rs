@@ -25,7 +25,7 @@ struct User {
 }
 
 impl User {
-    fn get_from_stdin() -> Self {
+    fn get_from_stdin() -> Result<Self> {
         let mut out = BufWriter::new(std::io::stdout());
         let stdin = std::io::stdin();
         let mut id = String::new();
@@ -38,7 +38,13 @@ impl User {
         let pass =
             rpassword::prompt_password_stdout(Color::Yellow("Password: ").make().as_str()).unwrap();
 
-        User { id, pass }
+        if id.len() == 0 || pass.len() == 0 {
+            Err(LeetUpError::Any(anyhow::anyhow!(
+                "Username or password is empty"
+            )))
+        } else {
+            Ok(User { id, pass })
+        }
     }
 }
 
@@ -74,7 +80,7 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     let timestamp = capture_value(1, timestamp_re, text)?;
     let timestamp_secret_re = Regex::new("name=\"timestamp_secret\" value=\"(.*?)\"").unwrap();
     let timestamp_secret = capture_value(1, timestamp_secret_re, text)?;
-    let user = User::get_from_stdin();
+    let user = User::get_from_stdin()?;
     let sp = Spinner::new(Spinners::Dots9, "Logging in...".into());
 
     let form = &[
@@ -96,11 +102,11 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         .form(form)
         .send()?;
 
+    info!("Status: {}", res.status());
     if res.status() == 302 {
         info!("Redirecting to: {}", res.url().as_str());
-        res = client.get(res.url().as_str()).send()?;
-    } else if res.status() != 200 {
-        error!("Status: {}", res.status());
+        client.get(res.url().as_str()).send()?;
+    } else {
         return Err(client_err);
     }
     debug!("Headers: {:#?}", res.headers());
@@ -117,15 +123,24 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         info!("Redirecting to: {}", res.url().as_str());
         res = client.get(res.url().as_str()).send()?;
         info!("Status: {}", res.status());
+        if !is_ok_or_redirect(res.status()) {
+            return Err(client_err);
+        }
         let location = res.headers().get("location").unwrap().to_str().unwrap();
         info!("Redirecting to: {}", location);
         res = client.get(location).send()?;
         info!("Status: {}", res.status());
+        if !is_ok_or_redirect(res.status()) {
+            return Err(client_err);
+        }
 
         let location = res.headers().get("location").unwrap().to_str().unwrap();
         info!("Redirecting to: {}", location);
         res = client.get(location).send()?;
         info!("Status: {}", res.status());
+        if !is_ok_or_redirect(res.status()) {
+            return Err(client_err);
+        }
 
         let cookies = res.cookies().collect::<Vec<_>>();
         let mut cookie_raw = String::new();
@@ -150,4 +165,8 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     sp.stop();
 
     Ok(session)
+}
+
+fn is_ok_or_redirect(status: reqwest::StatusCode) -> bool {
+    status == 200 || status == 302
 }
