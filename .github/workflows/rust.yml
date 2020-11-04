@@ -16,13 +16,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: leetup
-            asset_name: leetup${{ tag }}-linux.sh
+            asset_name: leetup${{ $tag }}-linux.sh
           - os: windows-latest
             artifact_name: leetup.exe
-            asset_name: leetup${{ tag }}.exe
+            asset_name: leetup${{ $tag }}.exe
           - os: macos-latest
             artifact_name: leetup
-            asset_name: leetup${{ tag }}-macos.sh
+            asset_name: leetup${{ $tag }}-macos.sh
     steps:
     - uses: actions/checkout@v2
       with:
