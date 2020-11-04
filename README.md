@@ -3,9 +3,13 @@
 Leetcode cli
 
 ## Install
-```
-cargo install leetup
-```
+Download from releases:
+`https://github.com/dragfire/leetup/releases`  
+Supports Linux, MacOS, Windows.
+>Note: You will need to do: `chmod +x leetup-{platform}.sh`
+
+If you have `cargo` installed, you can use:  
+`cargo install leetup`
 
 ## Usage:
 <img src="assets/progress3.png" alt="Leetup" width="600"/>
@@ -13,5 +17,8 @@ cargo install leetup
 <img src="assets/progress2.png" alt="Leetup" width="600"/>
 
 <img src="assets/progress1.png" alt="Leetup" width="600"/>
+
+### Credit:
+This project is heavily inspired by: https://github.com/leetcode-tools/leetcode-cli
 
 **Work In Progress**
