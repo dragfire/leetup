@@ -3,10 +3,9 @@
 Leetcode cli
 
 ## Install
-Download from releases:
-`https://github.com/dragfire/leetup/releases`  
+Download from ![releases](https://github.com/dragfire/leetup/releases)   
 Supports Linux, MacOS, Windows.
->Note: You will need to do: `chmod +x leetup-{platform}.sh`
+>Note: You will need to do: `chmod +x leetup-linux.sh` or `chmod +x leetup-macos.sh`
 
 If you have `cargo` installed, you can use:  
 `cargo install leetup`
@@ -21,4 +20,4 @@ If you have `cargo` installed, you can use:
 ### Credit:
 This project is heavily inspired by: https://github.com/leetcode-tools/leetcode-cli
 
-**Work In Progress**
+*Work In Progress*
