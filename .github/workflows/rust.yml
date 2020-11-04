@@ -17,23 +17,25 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: leetup
-            asset_name: leetup${{ matrix.rid }}-linux-amd64.sh
+            asset_name: leetup-linux-amd64
           - os: windows-latest
             artifact_name: leetup.exe
-            asset_name: leetup${{ matrix.rid }}-windows-amd64.exe
+            asset_name: leetup-windows-amd64
           - os: macos-latest
             artifact_name: leetup
-            asset_name: leetup${{ matrix.rid }}-macos-amd64.sh
+            asset_name: leetup-macos-amd64
     steps:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 0
     - name: Build
       run: cargo build --release
+    - name: Set env
+      run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: target/release/${{ matrix.artifact_name }}
-        asset_name: ${{ matrix.asset_name }}
+        asset_name: ${{ matrix.asset_name }}-${{ env.RELEASE_VERSION }}
         tag: ${{ github.ref }}
