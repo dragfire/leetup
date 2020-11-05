@@ -1,4 +1,4 @@
-![Rust](https://github.com/dragfire/leetup/workflows/Rust/badge.svg)
+![Rust](https://github.com/dragfire/leetup/workflows/Rust/badge.svg)   [![Build Status](https://travis-ci.org/dragfire/leetup.svg?branch=master)](https://travis-ci.org/dragfire/leetup) ![Crates](https://img.shields.io/crates/v/leetup) ![Downloads](https://img.shields.io/crates/d/leetup)
 # leetup
 Leetcode cli
 
