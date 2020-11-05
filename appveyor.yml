@@ -38,8 +38,8 @@ test_script:
   - if [%APPVEYOR_REPO_TAG%]==[false] (
       cargo build --target %TARGET% &&
       cargo build --target %TARGET% --release &&
-      cargo run --target %TARGET% &&
-      cargo run --target %TARGET% --release
+      cargo run --target %TARGET% -V &&
+      cargo run --target %TARGET% --release -V
     )
 
 before_deploy:
