@@ -37,9 +37,7 @@ test_script:
   # we don't run the "test phase" when doing deploys
   - if [%APPVEYOR_REPO_TAG%]==[false] (
       cargo build --target %TARGET% &&
-      cargo build --target %TARGET% --release &&
-      cargo run --target %TARGET% -V &&
-      cargo run --target %TARGET% --release -V
+      cargo build --target %TARGET% --release
     )
 
 before_deploy:
@@ -48,10 +46,6 @@ before_deploy:
 
 deploy:
   artifact: /.*\.zip/
-  # TODO update `auth_token.secure`
-  # - Create a `public_repo` GitHub token. Go to: https://github.com/settings/tokens/new
-  # - Encrypt it. Go to https://ci.appveyor.com/tools/encrypt
-  # - Paste the output down here
   auth_token:
     secure: JKMHRo/nz4uBdCY/SvzuSDBCmjoexU6KAA/9GuWiO9vrSY2A9o0ByIdvuxdf+wnl
   description: ''
