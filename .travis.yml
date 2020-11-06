@@ -13,13 +13,10 @@ env:
 matrix:
   include:
     # Linux
-    - env: TARGET=aarch64-unknown-linux-gnu
     - env: TARGET=x86_64-unknown-linux-gnu
     - env: TARGET=x86_64-unknown-linux-musl
 
     # OSX
-    - env: TARGET=i686-apple-darwin
-      os: osx
     - env: TARGET=x86_64-apple-darwin
       os: osx
 
@@ -29,7 +26,7 @@ matrix:
 before_install:
   - set -e
   - rustup self update
-  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then sudo apt-get -y install libssl-dev pkg-config ; fi
+  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then sudo apt -y install libssl-dev pkg-config ; fi
 
 install:
   - sh ci/install.sh
