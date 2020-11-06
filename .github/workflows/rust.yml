@@ -37,10 +37,3 @@ jobs:
         asset_name: ${{ matrix.asset_name }}
         tag: ${{ github.ref }}
         overwrite: true
-    - name: Bump homebrew-core formula
-      uses: mislav/bump-homebrew-formula-action@v1
-      if: "matrix.os == 'macos-latest' && !contains(github.ref, '-')" # skip prereleases
-      env:
-        COMMITTER_TOKEN: ${{ secrets.BREW_TOKEN }}
-      with:
-        formula-name: leetup
