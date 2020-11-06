@@ -22,7 +22,7 @@ Download from ![releases](https://github.com/dragfire/leetup/releases). Extract 
 > Note: You will need to add `leetup.exe` to PATH to access from Command Prompt.
 
 ## Usage:
-<img src="assets/leetup.gif" alt="Leetup" width="600"/>
+<img src="assets/leetup.gif" alt="Leetup" width="950"/>
 
 ### Credit:
 This project is inspired by: https://github.com/leetcode-tools/leetcode-cli
