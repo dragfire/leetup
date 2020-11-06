@@ -3,12 +3,25 @@
 Leetcode cli
 
 ## Install
-Download from ![releases](https://github.com/dragfire/leetup/releases)   
-Supports Linux, MacOS, Windows.
->Note: You will need to do: `chmod +x leetup-linux.sh` or `chmod +x leetup-macos.sh`
+- MacOS:
+```sh
+curl -LSfs https://japaric.github.io/trust/install.sh | sh -s -- --git dragfire/leetup
+```
 
-If you have `cargo` installed, you can use:  
-`cargo install leetup`
+- Linux:
+```sh
+curl -LSfs https://japaric.github.io/trust/install.sh | sh -s -- --git dragfire/leetup
+```
+
+- Cargo:
+```sh
+cargo install leetup
+```
+- Windows:  
+Download from ![releases](https://github.com/dragfire/leetup/releases). Extract the zipped x86_64 windows target file.
+> Note: You will need to add `leetup.exe` to PATH to access from Command Prompt.
+
+
 
 ## Usage:
 <img src="assets/progress3.png" alt="Leetup" width="600"/>
@@ -18,6 +31,4 @@ If you have `cargo` installed, you can use:
 <img src="assets/progress1.png" alt="Leetup" width="600"/>
 
 ### Credit:
-This project is heavily inspired by: https://github.com/leetcode-tools/leetcode-cli
-
-*Work In Progress*
+This project is inspired by: https://github.com/leetcode-tools/leetcode-cli
