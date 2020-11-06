@@ -41,6 +41,7 @@ matrix:
 before_install:
   - set -e
   - rustup self update
+  - sudo apt-get -y install libssl-dev pkg-config
 
 install:
   - sh ci/install.sh
