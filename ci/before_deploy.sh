@@ -17,7 +17,7 @@ main() {
 
     test -f Cargo.lock || cargo generate-lockfile
 
-    cross rustc --bin leetup --target $TARGET --release -- -C lto
+    cross rustc --bin leetup --target $TARGET --release
 
     cp target/$TARGET/release/leetup $stage/
 
