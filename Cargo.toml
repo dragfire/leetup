@@ -1,6 +1,6 @@
 [package]
 name = "leetup"
-version = "0.1.6"
+version = "0.1.8"
 authors = ["dragfire <asem.devajit@gmail.com>"]
 edition = "2018"
 description = "Leetcode cli"
@@ -32,3 +32,4 @@ html2text = "0.2.1"
 reqwest = { version = "0.10.8", features = [ "blocking", "json", "cookies"] }
 spinners = "1.2.0"
 dirs = "3.0.1"
+openssl = { version = "0.10", features = ["vendored"] }
