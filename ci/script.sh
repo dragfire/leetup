@@ -9,9 +9,6 @@ main() {
     if [ ! -z $DISABLE_TESTS ]; then
         return
     fi
-
-    cross run --target $TARGET -V
-    cross run --target $TARGET --release -V
 }
 
 # we don't run the "test phase" when doing deploys
