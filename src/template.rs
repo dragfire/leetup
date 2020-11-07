@@ -10,7 +10,8 @@ pub enum Pattern {
 
 #[derive(Copy, Clone)]
 pub enum InjectPosition {
-    BeforeCode,
+    BeforeCode, // Helpful for imports
+    BeforeCodeExclude,
     AfterCode,
     BeforeFunctionDefinition,
 }
@@ -22,8 +23,9 @@ impl From<Pattern> for String {
             Pattern::CustomCode => "@leetup=custom".into(),
             Pattern::Code => "@leetup=code".into(),
             Pattern::InjectCodePosition(pos) => match pos {
-                InjectPosition::BeforeCode => "@leeup=inject:before_code".into(),
-                InjectPosition::AfterCode => "@leeup=inject:after_code".into(),
+                InjectPosition::BeforeCode => "@leetup=inject:before_code".into(),
+                InjectPosition::BeforeCodeExclude => "@leetup=inject:before_code_ex".into(),
+                InjectPosition::AfterCode => "@leetup=inject:after_code".into(),
                 InjectPosition::BeforeFunctionDefinition => {
                     "@leetup=inject:before_function_definition".into()
                 }

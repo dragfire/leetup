@@ -92,6 +92,7 @@ pub struct Urls {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InjectCode {
     pub before_code: Option<Either>,
+    pub before_code_exclude: Option<Either>,
     pub after_code: Option<Either>,
     pub before_function_definition: Option<Either>,
 }
