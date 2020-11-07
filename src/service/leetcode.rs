@@ -3,11 +3,11 @@ use crate::{
     cmd::{self, Command, List, OrderBy, Query, User},
     icon::Icon,
     service::{
-        self, auth, CacheKey, Comment, CommentStyle, Config, Lang, LangInfo, Problem,
-        ServiceProvider, Session, Urls,
+        self, auth, CacheKey, Comment, CommentStyle, Lang, LangInfo, Problem, ServiceProvider,
+        Session,
     },
     template::{parse_code, Pattern},
-    LeetUpError, Result,
+    Config, LeetUpError, Result, Urls,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;

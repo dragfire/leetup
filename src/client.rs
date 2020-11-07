@@ -1,6 +1,6 @@
 use crate::{
-    service::{auth, Config, Problem, ServiceProvider, Session, Urls},
-    LeetUpError, Result,
+    service::{auth, Problem, ServiceProvider, Session},
+    Config, LeetUpError, Result, Urls,
 };
 use anyhow::anyhow;
 use cookie::{Cookie, CookieJar};
