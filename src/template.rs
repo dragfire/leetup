@@ -1,8 +1,18 @@
+use crate::{service::Problem, LeetUpError, Result};
+
 #[derive(Copy, Clone)]
 pub enum Pattern {
     LeetUpInfo,
     CustomCode,
     Code,
+    InjectCodePosition(InjectPosition),
+}
+
+#[derive(Copy, Clone)]
+pub enum InjectPosition {
+    BeforeCode,
+    AfterCode,
+    BeforeFunctionDefinition,
 }
 
 impl From<Pattern> for String {
@@ -11,6 +21,13 @@ impl From<Pattern> for String {
             Pattern::LeetUpInfo => "@leetup=info".into(),
             Pattern::CustomCode => "@leetup=custom".into(),
             Pattern::Code => "@leetup=code".into(),
+            Pattern::InjectCodePosition(pos) => match pos {
+                InjectPosition::BeforeCode => "@leeup=inject:before_code".into(),
+                InjectPosition::AfterCode => "@leeup=inject:after_code".into(),
+                InjectPosition::BeforeFunctionDefinition => {
+                    "@leetup=inject:before_function_definition".into()
+                }
+            },
         }
     }
 }
@@ -53,6 +70,10 @@ pub fn parse_code(code: &str) -> Option<String> {
     let code = code.get(..end_index)?;
 
     Some(code.into())
+}
+
+pub fn inject_code(problem: &mut Problem) -> Result<()> {
+    Ok(())
 }
 
 #[test]
