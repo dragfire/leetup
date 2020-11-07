@@ -7,7 +7,7 @@ use crate::{
         Session,
     },
     template::{parse_code, Pattern},
-    Config, LeetUpError, Result, Urls,
+    Config, Either, LeetUpError, Result, Urls,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
@@ -62,7 +62,7 @@ impl<'a> Leetcode<'a> {
             session =
                 Some(serde_json::from_str::<Session>(val).expect("Session format not correct"));
         }
-        let config = Config::get(data_dir);
+        let config = Config::get(data_dir).expect("Need to get config");
 
         Leetcode {
             session,
@@ -659,22 +659,6 @@ struct CodeDefinition {
 
     #[serde(rename = "defaultCode")]
     default_code: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(untagged)]
-enum Either {
-    Sequence(Vec<String>),
-    String(String),
-}
-
-impl ToString for Either {
-    fn to_string(&self) -> String {
-        match self {
-            Either::String(s) => s.to_owned(),
-            Either::Sequence(v) => v.join("\n"),
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
