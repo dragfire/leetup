@@ -65,9 +65,8 @@ impl FromStr for Session {
     type Err = cookie::ParseError;
 
     fn from_str(raw: &str) -> std::result::Result<Self, Self::Err> {
-        let raw_split = raw.split_whitespace();
+        let raw_split = raw.split("; ");
 
-        // get all cookies in iterator
         let cookies = raw_split.map(Cookie::parse).collect::<Vec<_>>();
         let mut id = String::new();
         let mut csrf = String::new();
@@ -104,4 +103,13 @@ impl From<&Session> for String {
     fn from(session: &Session) -> Self {
         session_to_cookie(&session.id, &session.csrf)
     }
+}
+
+#[test]
+fn test_cookie_parser() {
+    let cookie = "csrftoken=asdsd; LEETCODE_SESSION=asdasd";
+    let session: Session = Session::from_str(cookie).unwrap();
+
+    assert!(!session.csrf.is_empty());
+    assert!(!session.id.is_empty());
 }

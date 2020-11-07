@@ -1,5 +1,5 @@
 use crate::{
-    service::{self, Lang, Problem, ServiceProvider},
+    service::{self, leetcode::Leetcode, Lang, Problem, ServiceProvider},
     Result,
 };
 use log::debug;
@@ -190,7 +190,7 @@ pub struct LeetUpArgs {
 pub fn process() -> Result<()> {
     let opt = LeetUpArgs::from_args();
     debug!("Options: {:#?}", opt);
-    let mut provider = service::leetcode::Leetcode::new();
+    let mut provider = Leetcode::new();
 
     match opt.command {
         Command::Pick(pick) => {

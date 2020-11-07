@@ -141,6 +141,15 @@ impl<'a> Leetcode<'a> {
         Ok(())
     }
 
+    fn logout(&mut self) -> Result<()> {
+        if let Err(_) = self.cache.remove(CacheKey::Session.into()) {
+            println!("User not logged in!");
+            return Ok(());
+        }
+        if let Err(_) = self.cache.remove(CacheKey::Problems.into()) {}
+        Ok(())
+    }
+
     fn print_judge_result(
         &self,
         problem: &Problem,
@@ -595,12 +604,13 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 println!("Enter Cookie:");
                 let stdin = std::io::stdin();
                 stdin.read_line(&mut cookie)?;
-                cookie = String::from(cookie.trim_end());
+                cookie = format!(r#"{}"#, cookie.trim_end());
             }
 
             // filter out all unnecessary cookies
             let session = Session::from_str(&cookie)
                 .map_err(|_| LeetUpError::Any(anyhow!("Unable to parse cookie string")))?;
+            println!("\n{}", Color::Green("User logged in!").make());
             self.cache_session(session)?;
         }
 
@@ -618,11 +628,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         }
 
         if user.logout.is_some() {
-            if let Err(_) = self.cache.remove(CacheKey::Session.into()) {
-                println!("User not logged in!");
-                return Ok(());
-            }
-            if let Err(_) = self.cache.remove(CacheKey::Problems.into()) {}
+            self.logout()?;
             println!("User logged out!");
         }
 
