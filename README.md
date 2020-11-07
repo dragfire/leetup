@@ -4,7 +4,7 @@
 
 </h1>
 
-<h4 align="center">Solve OJ problems from command line</h4>
+<h4 align="center">Solve Leetcode problems</h4>
 
 ![](assets/leetup.gif)
 
