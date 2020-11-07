@@ -30,8 +30,8 @@ Download from ![releases](https://github.com/dragfire/leetup/releases). Extract 
 - List/Show problems: `leetup list`
     - Search by keyword: `leetup list <keyword>`
     - Query easy: `leetup list -q e`
-    - Order by Id, Title, Difficulty: `leetup list -qE -oIdT`
-![More Commands](https://github.com/dragfire/leetup/docs/usage.md)
+    - Order by Id, Title, Difficulty: `leetup list -qE -oIdT`  
+![More Commands](docs/usage.md)
 
 ## Inject code fragments:
 You can inject pieces of code that you frequently use in certain positions of the generated code file. Example: Standard library imports for each language can be put into a config. `Leetup` will pick it up and insert into the generated file.  
