@@ -1,18 +1,18 @@
-![Rust](https://github.com/dragfire/leetup/workflows/Rust/badge.svg)   [![Build Status](https://travis-ci.org/dragfire/leetup.svg?branch=master)](https://travis-ci.org/dragfire/leetup) ![Crates](https://img.shields.io/crates/v/leetup) ![Downloads](https://img.shields.io/crates/d/leetup)
-# leetup
-Leetcode cli
+<h1 align="center">
+
+![Rust](https://github.com/dragfire/leetup/workflows/Rust/badge.svg) [![Build Status](https://travis-ci.org/dragfire/leetup.svg?branch=master)](https://travis-ci.org/dragfire/leetup) [![crates](https://img.shields.io/crates/v/leetup.svg)](https://crates.io/crates/leetup) ![Downloads](https://img.shields.io/crates/d/leetup)
+
+</h1>
+
+<h4 align="center">Solve OJ problems from command line</h4>
+
+![](assets/leetup.gif)
 
 ## Install
-- MacOS:
+- MacOs/Linux:
 ```sh
 curl -LSfs https://japaric.github.io/trust/install.sh | sh -s -- --git dragfire/leetup
 ```
-
-- Linux:
-```sh
-curl -LSfs https://japaric.github.io/trust/install.sh | sh -s -- --git dragfire/leetup
-```
-
 - Cargo:
 ```sh
 cargo install leetup
@@ -21,8 +21,17 @@ cargo install leetup
 Download from ![releases](https://github.com/dragfire/leetup/releases). Extract the zipped x86_64 windows target file.
 > Note: You will need to add `leetup.exe` to PATH to access from Command Prompt.
 
-## Usage:
-<img src="assets/leetup.gif" alt="Leetup" width="1150" height="1000"/>
+## Quick Start:
+- Login using Github: `leetup user -g`
+- Login using Cookie: `leetup user -c`
+- Pick a problem: `leetup pick -l python 1`
+- Test a problem: `leetup test two-sum.py -t "[1,2]\n3"`
+- Submit a problem: `leetup submit two-sum.py`
+- List/Show problems: `leetup list`
+    - Search by keyword: `leetup list <keyword>`
+    - Query easy: `leetup list -q e`
+    - Order by Id, Title, Difficulty: `leetup list -qE -oIdT`
+- More options: `leetup --help`
 
 ## Inject code fragments:
 You can inject pieces of code that you frequently use in certain positions of the generated code file. Example: Standard library imports for each language can be put into a config. `Leetup` will pick it up and insert into the generated file.  
