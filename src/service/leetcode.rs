@@ -6,8 +6,8 @@ use crate::{
         self, auth, CacheKey, Comment, CommentStyle, Lang, LangInfo, Problem, ServiceProvider,
         Session,
     },
-    template::{parse_code, Pattern},
-    Config, Either, LeetUpError, Result, Urls,
+    template::{parse_code, InjectPosition, Pattern},
+    Config, Either, InjectCode, LeetUpError, Result, Urls,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
@@ -62,6 +62,7 @@ impl<'a> Leetcode<'a> {
             session =
                 Some(serde_json::from_str::<Session>(val).expect("Session format not correct"));
         }
+        data_dir.push("config.json");
         let config = Config::get(data_dir).expect("Need to get config");
 
         Leetcode {
@@ -117,6 +118,30 @@ impl<'a> Leetcode<'a> {
             }
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
+    }
+
+    fn write_code_fragment(
+        &self,
+        writer: &mut BufWriter<File>,
+        comment: &str,
+        code_fragment: Option<&Either>,
+        pos: InjectPosition,
+    ) -> Result<()> {
+        if let Some(either) = code_fragment {
+            let inject_code_pos_pattern = format!(
+                "\n{} {}\n",
+                comment,
+                Pattern::InjectCodePosition(pos).to_string()
+            );
+            writer.write(inject_code_pos_pattern.as_bytes())?;
+            let code_fragment = match either {
+                Either::String(s) => s.to_owned(),
+                Either::Sequence(seq) => seq.to_owned().join("\n"),
+            };
+            writer.write(code_fragment.as_bytes())?;
+            writer.write(inject_code_pos_pattern.as_bytes())?;
+        }
+        Ok(())
     }
 
     fn print_judge_result(
@@ -472,10 +497,40 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             let pattern_code = format!("\n{} {}\n", single_comment, Pattern::Code.to_string());
             let code = &code_defs.get(&lang.name).unwrap().default_code;
             debug!("Code: {}", code);
-            writer.write(b"\n\n\n")?;
+            let inject_code = self
+                .config()?
+                .inject_code
+                .as_ref()
+                .and_then(|c| c.get(&problem.lang));
+            debug!("InjectCode: {:#?}", inject_code);
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut writer,
+                    single_comment,
+                    inject_code.before_code_exclude.as_ref(),
+                    InjectPosition::BeforeCodeExclude,
+                )?;
+            }
             writer.write(pattern_code.as_bytes())?;
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut writer,
+                    single_comment,
+                    inject_code.before_code.as_ref(),
+                    InjectPosition::BeforeCode,
+                )?;
+            }
+            writer.write(b"\n")?;
             writer.write_all(code.as_bytes())?;
             writer.write(pattern_code.as_bytes())?;
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut writer,
+                    single_comment,
+                    inject_code.after_code.as_ref(),
+                    InjectPosition::AfterCode,
+                )?;
+            }
             writer.flush()?;
             println!(
                 "Generated: {}",
