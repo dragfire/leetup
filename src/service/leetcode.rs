@@ -134,10 +134,7 @@ impl<'a> Leetcode<'a> {
                 Pattern::InjectCodePosition(pos).to_string()
             );
             writer.write(inject_code_pos_pattern.as_bytes())?;
-            let code_fragment = match either {
-                Either::String(s) => s.to_owned(),
-                Either::Sequence(seq) => seq.to_owned().join("\n"),
-            };
+            let code_fragment = either.to_string();
             writer.write(code_fragment.as_bytes())?;
             writer.write(inject_code_pos_pattern.as_bytes())?;
         }
