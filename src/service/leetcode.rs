@@ -367,13 +367,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let probs = self.fetch_problems()?;
         let urls = &self.config.urls;
         let mut single_comment = "";
-        let lang = match pick.lang.clone() {
-            Lang::Rust(info) => info,
-            Lang::Java(info) => info,
-            Lang::Javascript(info) => info,
-            Lang::Python3(info) => info,
-            Lang::MySQL(info) => info,
-        };
+        let lang = pick.lang.info();
 
         // TODO should have Single and Multiline comment available?
         let comment = match &lang.comment {
