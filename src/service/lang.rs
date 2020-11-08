@@ -65,7 +65,7 @@ impl FromStr for Lang {
         let py_comment = Comment::Python3(CommentStyle::Single("#".into()), None);
         let mysql_comment = Comment::MySQL(CommentStyle::Single("--".into()), None);
 
-        let javascript_lang = Lang::Java(LangInfo {
+        let javascript_lang = Lang::Javascript(LangInfo {
             name: "javascript".to_string(),
             extension: "js".to_string(),
             comment: c_comment.clone(),
@@ -97,7 +97,7 @@ impl FromStr for Lang {
                 extension: "cpp".into(),
                 comment: c_comment,
             })),
-            "mysql" => Ok(Lang::Java(LangInfo {
+            "mysql" => Ok(Lang::MySQL(LangInfo {
                 name: "mysql".to_string(),
                 extension: "sql".to_string(),
                 comment: mysql_comment,
@@ -112,7 +112,7 @@ impl FromStr for Lang {
                 extension: "rb".to_string(),
                 comment: py_comment.clone(),
             })),
-            "c" => Ok(Lang::Cpp(LangInfo {
+            "c" => Ok(Lang::C(LangInfo {
                 name: "c".into(),
                 extension: "c".into(),
                 comment: c_comment,
