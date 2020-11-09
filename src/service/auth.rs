@@ -57,7 +57,7 @@ fn capture_value(i: usize, re: Regex, text: &str) -> Result<String> {
 
 pub fn github_login<'a, P: ServiceProvider>(provider: &P) -> Result<Session> {
     let client_err = LeetUpError::Any(anyhow::anyhow!("Something went wrong!"));
-    let config = provider.config()?;
+    let config = provider.config()?.ok_or(LeetUpError::OptNone)?;
     let client = Client::builder()
         .cookie_store(true)
         .referer(true)

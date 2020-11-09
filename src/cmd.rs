@@ -1,5 +1,5 @@
 use crate::{
-    service::{self, leetcode::Leetcode, Lang, Problem, ServiceProvider},
+    service::{self, leetcode::Leetcode, plugins::linkedin_auth, Lang, Problem, ServiceProvider},
     Result,
 };
 use log::debug;
@@ -37,8 +37,12 @@ pub struct User {
     #[structopt(short, long)]
     pub github: Option<Option<String>>,
 
-    /// Logout user
+    /// Login using Linkedin
     #[structopt(short, long)]
+    pub linkedin: Option<Option<String>>,
+
+    /// Logout user
+    #[structopt(long)]
     pub logout: Option<Option<String>>,
 }
 
@@ -208,6 +212,8 @@ pub fn process() -> Result<()> {
     let mut leetup = Leetup::new();
     debug!("Options: {:#?}", opt);
     let leetcode_plugin = Leetcode::new();
+    let linkedin_auth_plugin = linkedin_auth::LinkedinAuth::new();
+    leetup.register_plugin(linkedin_auth_plugin);
     leetup.register_plugin(leetcode_plugin);
 
     for plugin in leetup.plugins {

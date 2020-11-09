@@ -56,7 +56,7 @@ pub fn post<P: ServiceProvider, T: serde::Serialize + ?Sized, F>(
 where
     F: FnOnce() -> Option<HeaderMap>,
 {
-    let config = provider.config()?;
+    let config = provider.config()?.ok_or(LeetUpError::OptNone)?;
     let headers = headers_with_session(with_headers(), provider.session());
     let client = Client::builder().default_headers(headers).build()?;
 

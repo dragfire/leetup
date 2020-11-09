@@ -86,7 +86,7 @@ impl Leetcode {
     }
 
     pub fn fetch_problems(&mut self) -> Result<Vec<StatStatusPair>> {
-        let problems = self.fetch_all_problems()?;
+        let problems = self.fetch_all_problems()?.ok_or(LeetUpError::OptNone)?;
         let problems: Vec<StatStatusPair> =
             serde_json::from_value(problems["stat_status_pairs"].clone())?;
 
@@ -276,14 +276,14 @@ impl ServiceProvider for Leetcode {
         self.session.as_ref()
     }
 
-    fn config(&self) -> Result<&Config> {
-        Ok(&self.config)
+    fn config(&self) -> Result<Option<&Config>> {
+        Ok(Some(&self.config))
     }
 
     /// Fetch all problems
     ///
     /// Use cache wherever necessary
-    fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
+    fn fetch_all_problems(&mut self) -> Result<Option<serde_json::value::Value>> {
         let problems_res: serde_json::value::Value;
         if let Some(ref val) = self.cache.get(CacheKey::Problems.into())? {
             debug!("Fetching problems from cache...");
@@ -298,11 +298,11 @@ impl ServiceProvider for Leetcode {
             self.cache.set(CacheKey::Problems.into(), res_serialized)?;
         }
 
-        Ok(problems_res)
+        Ok(Some(problems_res))
     }
 
     fn list_problems(&mut self, list: &List) -> Result<()> {
-        let problems_res = self.fetch_all_problems()?;
+        let problems_res = self.fetch_all_problems()?.ok_or(LeetUpError::OptNone)?;
         let mut probs: Vec<StatStatusPair> =
             serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
 
@@ -499,6 +499,7 @@ impl ServiceProvider for Leetcode {
             debug!("Code: {}", code);
             let inject_code = self
                 .config()?
+                .ok_or(LeetUpError::OptNone)?
                 .inject_code
                 .as_ref()
                 .and_then(|c| c.get(&problem.lang));
@@ -552,7 +553,7 @@ impl ServiceProvider for Leetcode {
                 "data_input":  test_data,
                 "judge_type":  "large"
         });
-        let url = &self.config()?.urls.test;
+        let url = &self.config()?.ok_or(LeetUpError::OptNone)?.urls.test;
         let response = self.run_code(url, &problem, body)?;
         let url = self
             .config
@@ -574,7 +575,7 @@ impl ServiceProvider for Leetcode {
             "typed_code":  parse_code(problem.typed_code.as_ref().unwrap()),
             "judge_type": "large",
         });
-        let url = &self.config()?.urls.submit;
+        let url = &self.config()?.ok_or(LeetUpError::OptNone)?.urls.submit;
         let response = self.run_code(url, &problem, body)?;
         let url = self
             .config
@@ -629,8 +630,8 @@ impl ServiceProvider for Leetcode {
         Ok(())
     }
 
-    fn cache(&mut self) -> Result<&KvStore> {
-        Ok(&self.cache)
+    fn cache(&mut self) -> Result<Option<&KvStore>> {
+        Ok(Some(&self.cache))
     }
 
     fn name(&self) -> String {

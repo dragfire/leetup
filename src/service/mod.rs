@@ -7,5 +7,6 @@ pub mod auth;
 mod file;
 mod lang;
 pub mod leetcode;
+pub mod plugins;
 mod pool;
 mod provider;
