@@ -47,7 +47,7 @@ pub fn get(
 }
 
 /// Make a POST request
-pub fn post<'a, P: ServiceProvider<'a>, T: serde::Serialize + ?Sized, F>(
+pub fn post<P: ServiceProvider, T: serde::Serialize + ?Sized, F>(
     provider: &P,
     url: &str,
     body: &T,

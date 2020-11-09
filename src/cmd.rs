@@ -187,31 +187,53 @@ pub struct LeetUpArgs {
     pub command: Command,
 }
 
-pub fn process() -> Result<()> {
-    let opt = LeetUpArgs::from_args();
-    debug!("Options: {:#?}", opt);
-    let mut provider = Leetcode::new();
+struct Leetup {
+    plugins: Vec<Box<dyn ServiceProvider>>,
+}
 
-    match opt.command {
-        Command::Pick(pick) => {
-            provider.pick_problem(pick)?;
-        }
-        Command::List(list) => {
-            provider.list_problems(list)?;
-        }
-        Command::User(user) => {
-            provider.process_auth(user)?;
-        }
-        Command::Submit(submit) => {
-            let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
-            provider.problem_submit(submit)?;
-            sp.stop();
-        }
-        Command::Test(test) => {
-            let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
-            provider.problem_test(test)?;
-            sp.stop();
+impl Leetup {
+    fn new() -> Self {
+        Self {
+            plugins: Vec::new(),
         }
     }
+
+    fn register_plugin<T: ServiceProvider + 'static>(&mut self, plugin: T) {
+        self.plugins.push(Box::new(plugin));
+    }
+}
+
+pub fn process() -> Result<()> {
+    let opt = LeetUpArgs::from_args();
+    let mut leetup = Leetup::new();
+    debug!("Options: {:#?}", opt);
+    let leetcode_plugin = Leetcode::new();
+    leetup.register_plugin(leetcode_plugin);
+
+    for plugin in leetup.plugins {
+        let mut plugin = plugin;
+        match &opt.command {
+            Command::Pick(pick) => {
+                plugin.pick_problem(pick)?;
+            }
+            Command::List(list) => {
+                plugin.list_problems(list)?;
+            }
+            Command::User(user) => {
+                plugin.process_auth(user)?;
+            }
+            Command::Submit(submit) => {
+                let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
+                plugin.problem_submit(submit)?;
+                sp.stop();
+            }
+            Command::Test(test) => {
+                let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
+                plugin.problem_test(test)?;
+                sp.stop();
+            }
+        }
+    }
+
     Ok(())
 }

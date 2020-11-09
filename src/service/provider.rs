@@ -1,6 +1,6 @@
 // TODO refactor this file
 use crate::{
-    cmd::{self, Command, User},
+    cmd::{self, Command},
     Config, Result,
 };
 use cookie::Cookie;
@@ -11,17 +11,17 @@ use std::str::FromStr;
 
 /// ServiceProvider trait provides all the functionalities required to solve problems
 /// on any type of Online Judge through leetup CLI.
-pub trait ServiceProvider<'a> {
+pub trait ServiceProvider {
     fn session(&self) -> Option<&Session>;
     fn config(&self) -> Result<&Config>;
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value>;
-    fn list_problems(&mut self, list: cmd::List) -> Result<()>;
-    fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()>;
-    fn problem_test(&self, test: cmd::Test) -> Result<()>;
-    fn problem_submit(&self, submit: cmd::Submit) -> Result<()>;
-    fn process_auth(&mut self, user: User) -> Result<()>;
+    fn list_problems(&mut self, list: &cmd::List) -> Result<()>;
+    fn pick_problem(&mut self, pick: &cmd::Pick) -> Result<()>;
+    fn problem_test(&self, test: &cmd::Test) -> Result<()>;
+    fn problem_submit(&self, submit: &cmd::Submit) -> Result<()>;
+    fn process_auth(&mut self, user: &cmd::User) -> Result<()>;
     fn cache(&mut self) -> Result<&KvStore>;
-    fn name(&self) -> &'a str;
+    fn name(&self) -> String;
 }
 
 #[derive(Debug)]

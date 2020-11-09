@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 /// Leetcode holds all attributes required to implement ServiceProvider trait.
-pub struct Leetcode<'a> {
+pub struct Leetcode {
     /// Store user session
     ///
     /// If session is empty, user should be able to view problems.
@@ -41,12 +41,12 @@ pub struct Leetcode<'a> {
     cache: KvStore,
 
     /// Service provider name
-    name: &'a str,
+    name: String,
 }
 
-impl<'a> Leetcode<'a> {
+impl Leetcode {
     pub fn new() -> Self {
-        let name = "leetcode";
+        let name = "leetcode".to_string();
 
         // create .leetup directory: ~/.leetup/*.log
         let mut data_dir = PathBuf::new();
@@ -271,7 +271,7 @@ Expected:
     }
 }
 
-impl<'a> ServiceProvider<'a> for Leetcode<'a> {
+impl ServiceProvider for Leetcode {
     fn session(&self) -> Option<&Session> {
         self.session.as_ref()
     }
@@ -301,7 +301,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(problems_res)
     }
 
-    fn list_problems(&mut self, list: List) -> Result<()> {
+    fn list_problems(&mut self, list: &List) -> Result<()> {
         let problems_res = self.fetch_all_problems()?;
         let mut probs: Vec<StatStatusPair> =
             serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
@@ -363,7 +363,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()> {
+    fn pick_problem(&mut self, pick: &cmd::Pick) -> Result<()> {
         let probs = self.fetch_problems()?;
         let urls = &self.config.urls;
         let mut single_comment = "";
@@ -541,8 +541,8 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn problem_test(&self, test: cmd::Test) -> Result<()> {
-        let problem = service::extract_problem(test.filename)?;
+    fn problem_test(&self, test: &cmd::Test) -> Result<()> {
+        let problem = service::extract_problem(&test.filename)?;
         let test_data = test.test_data.replace("\\n", "\n");
         let body = json!({
                 "lang":        problem.lang.to_owned(),
@@ -565,8 +565,8 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn problem_submit(&self, submit: cmd::Submit) -> Result<()> {
-        let problem = service::extract_problem(submit.filename)?;
+    fn problem_submit(&self, submit: &cmd::Submit) -> Result<()> {
+        let problem = service::extract_problem(&submit.filename)?;
         let body = json!({
             "lang":        problem.lang.to_owned(),
             "question_id": problem.id,
@@ -587,13 +587,13 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn process_auth(&mut self, user: User) -> Result<()> {
+    fn process_auth(&mut self, user: &User) -> Result<()> {
         // cookie login
-        if let Some(val) = user.cookie {
+        if let Some(ref val) = user.cookie {
             let mut cookie = String::new();
 
             if let Some(val) = val {
-                cookie = val;
+                cookie = val.to_owned();
             } else {
                 println!("Enter Cookie:");
                 let stdin = std::io::stdin();
@@ -633,8 +633,8 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(&self.cache)
     }
 
-    fn name(&self) -> &'a str {
-        self.name
+    fn name(&self) -> String {
+        self.name.to_owned()
     }
 }
 

@@ -55,7 +55,7 @@ fn capture_value(i: usize, re: Regex, text: &str) -> Result<String> {
         .ok_or(LeetUpError::OptNone)
 }
 
-pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session> {
+pub fn github_login<'a, P: ServiceProvider>(provider: &P) -> Result<Session> {
     let client_err = LeetUpError::Any(anyhow::anyhow!("Something went wrong!"));
     let config = provider.config()?;
     let client = Client::builder()
