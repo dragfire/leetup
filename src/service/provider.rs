@@ -12,15 +12,42 @@ use std::str::FromStr;
 /// ServiceProvider trait provides all the functionalities required to solve problems
 /// on any type of Online Judge through leetup CLI.
 pub trait ServiceProvider {
-    fn session(&self) -> Option<&Session>;
-    fn config(&self) -> Result<Option<&Config>>;
-    fn fetch_all_problems(&mut self) -> Result<Option<serde_json::value::Value>>;
-    fn list_problems(&mut self, list: &cmd::List) -> Result<()>;
-    fn pick_problem(&mut self, pick: &cmd::Pick) -> Result<()>;
-    fn problem_test(&self, test: &cmd::Test) -> Result<()>;
-    fn problem_submit(&self, submit: &cmd::Submit) -> Result<()>;
-    fn process_auth(&mut self, user: &cmd::User) -> Result<()>;
-    fn cache(&mut self) -> Result<Option<&KvStore>>;
+    fn session(&self) -> Option<&Session> {
+        None
+    }
+
+    fn config(&self) -> Result<Option<&Config>> {
+        Ok(None)
+    }
+
+    fn fetch_all_problems(&mut self) -> Result<Option<serde_json::value::Value>> {
+        Ok(None)
+    }
+
+    fn list_problems(&mut self, list: &cmd::List) -> Result<()> {
+        Ok(())
+    }
+
+    fn pick_problem(&mut self, pick: &cmd::Pick) -> Result<()> {
+        Ok(())
+    }
+
+    fn problem_test(&self, test: &cmd::Test) -> Result<()> {
+        Ok(())
+    }
+
+    fn problem_submit(&self, submit: &cmd::Submit) -> Result<()> {
+        Ok(())
+    }
+
+    fn process_auth(&mut self, user: &cmd::User) -> Result<()> {
+        Ok(())
+    }
+
+    fn cache(&mut self) -> Result<Option<&KvStore>> {
+        Ok(None)
+    }
+
     fn name(&self) -> String;
 }
 
