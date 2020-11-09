@@ -1,5 +1,5 @@
 use crate::{
-    service::{self, leetcode::Leetcode, plugins, Lang, Problem, ServiceProvider},
+    service::{self, plugins, Lang, Problem, ServiceProvider},
     Result,
 };
 use log::debug;
@@ -211,7 +211,7 @@ pub fn process() -> Result<()> {
     let opt = LeetUpArgs::from_args();
     let mut leetup = Leetup::new();
     debug!("Options: {:#?}", opt);
-    let leetcode_plugin = Leetcode::new();
+    let leetcode_plugin = plugins::Leetcode::new();
     let linkedin_auth_plugin = plugins::LinkedinAuth::new();
     let topic_tag_plugin = plugins::TopicTag::new();
 
