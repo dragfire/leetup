@@ -302,6 +302,9 @@ impl ServiceProvider for Leetcode {
     }
 
     fn list_problems(&mut self, list: &List) -> Result<()> {
+        if list.tag.is_some() {
+            return Ok(());
+        }
         let problems_res = self.fetch_all_problems()?.ok_or(LeetUpError::OptNone)?;
         let mut probs: Vec<StatStatusPair> =
             serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
