@@ -311,7 +311,10 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
             probs.sort_by(|a, b| {
                 let mut ordering = Ordering::Equal;
-                let id_ordering = a.stat.question_id.cmp(&b.stat.question_id);
+                let id_ordering = a
+                    .stat
+                    .frontend_question_id
+                    .cmp(&b.stat.frontend_question_id);
                 let title_ordering = a.stat.question_title_slug.cmp(&b.stat.question_title_slug);
                 let diff_ordering = a.difficulty.level.cmp(&b.difficulty.level);
 
@@ -393,9 +396,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         let problem: Problem = probs
             .iter()
-            .find(|item| item.stat.question_id == pick.id.unwrap())
+            .find(|item| item.stat.frontend_question_id == pick.id.unwrap())
             .map(|item| Problem {
-                id: item.stat.question_id,
+                id: item.stat.frontend_question_id,
                 link: format!("{}{}/", urls.problems, item.stat.question_title_slug),
                 slug: item.stat.question_title_slug.to_string(),
                 lang: lang.name.to_owned(),
@@ -770,7 +773,7 @@ fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
             starred_icon,
             locked_icon,
             acd,
-            qstat.question_id,
+            qstat.frontend_question_id,
             qstat.question_title,
             obj.difficulty.to_string()
         );
