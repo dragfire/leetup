@@ -6,6 +6,7 @@ use crate::{
 use cookie::Cookie;
 use leetup_cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
 
@@ -15,13 +16,22 @@ pub trait ServiceProvider<'a> {
     fn session(&self) -> Option<&Session>;
     fn config(&self) -> Result<&Config>;
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value>;
-    fn list_problems(&mut self, list: cmd::List) -> Result<()>;
+    fn list_problems(
+        &mut self,
+        list: cmd::List,
+        options: Option<ListProblemsOptions>,
+    ) -> Result<()>;
+    fn list_tag_problems(&mut self, list: cmd::List) -> Result<()>;
     fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()>;
     fn problem_test(&self, test: cmd::Test) -> Result<()>;
     fn problem_submit(&self, submit: cmd::Submit) -> Result<()>;
     fn process_auth(&mut self, user: User) -> Result<()>;
     fn cache(&mut self) -> Result<&KvStore>;
     fn name(&self) -> &'a str;
+}
+
+pub struct ListProblemsOptions {
+    pub question_ids: Option<HashSet<String>>,
 }
 
 #[derive(Debug)]

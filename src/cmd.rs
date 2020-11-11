@@ -197,7 +197,11 @@ pub fn process() -> Result<()> {
             provider.pick_problem(pick)?;
         }
         Command::List(list) => {
-            provider.list_problems(list)?;
+            if list.tag.is_some() {
+                provider.list_tag_problems(list)?;
+            } else {
+                provider.list_problems(list, None)?;
+            }
         }
         Command::User(user) => {
             provider.process_auth(user)?;
