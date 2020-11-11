@@ -94,7 +94,7 @@ pub enum Command {
     #[structopt(name = "submit")]
     Submit(Submit),
 
-    /// Submit a problem
+    /// Test a problem
     #[structopt(name = "test")]
     Test(Test),
 }
