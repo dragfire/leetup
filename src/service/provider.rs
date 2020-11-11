@@ -21,7 +21,7 @@ pub trait ServiceProvider<'a> {
         list: cmd::List,
         options: Option<ListProblemsOptions>,
     ) -> Result<()>;
-    fn list_tag_problems(&mut self, list: cmd::List) -> Result<()>;
+    fn list_problems_with_tag(&mut self, list: cmd::List) -> Result<()>;
     fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()>;
     fn problem_test(&self, test: cmd::Test) -> Result<()>;
     fn problem_submit(&self, submit: cmd::Submit) -> Result<()>;

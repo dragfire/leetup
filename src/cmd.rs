@@ -198,7 +198,7 @@ pub fn process() -> Result<()> {
         }
         Command::List(list) => {
             if list.tag.is_some() {
-                provider.list_tag_problems(list)?;
+                provider.list_problems_with_tag(list)?;
             } else {
                 provider.list_problems(list, None)?;
             }

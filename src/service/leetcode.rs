@@ -301,7 +301,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(problems_res)
     }
 
-    fn list_tag_problems(&mut self, list: List) -> Result<()> {
+    fn list_problems_with_tag(&mut self, list: List) -> Result<()> {
         let query = r#"
             query getTopicTag($slug: String!) {
                  topicTag(slug: $slug) {
