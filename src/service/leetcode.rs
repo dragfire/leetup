@@ -3,8 +3,8 @@ use crate::{
     cmd::{self, Command, List, OrderBy, Query, User},
     icon::Icon,
     service::{
-        self, auth, CacheKey, Comment, CommentStyle, Lang, LangInfo, Problem, ServiceProvider,
-        Session,
+        self, auth, CacheKey, Comment, CommentStyle, Lang, LangInfo, ListProblemsOptions, Problem,
+        ServiceProvider, Session,
     },
     template::{parse_code, InjectPosition, Pattern},
     Config, Either, InjectCode, LeetUpError, Result, Urls,
@@ -19,7 +19,7 @@ use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -301,10 +301,72 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(problems_res)
     }
 
-    fn list_problems(&mut self, list: List) -> Result<()> {
+    fn list_problems_with_tag(&mut self, list: List) -> Result<()> {
+        let query = r#"
+            query getTopicTag($slug: String!) {
+                 topicTag(slug: $slug) {
+                   name
+                   translatedName
+                   slug
+                   questions {
+                     questionFrontendId
+                   }
+                 }
+               }
+            "#;
+        let body: serde_json::value::Value = json!(
+        {
+          "operationName": "getTopicTag",
+          "variables": {
+            "slug": list.tag,
+          },
+          "query": query
+        }
+                );
+
+        let response = client::post(self, &self.config.urls.graphql, &body, || None)?;
+
+        let question_ids: Option<HashSet<_>> = response["data"]["topicTag"]["questions"]
+            .as_array()
+            .and_then(|questions| {
+                questions
+                    .iter()
+                    .map(|serde_string| {
+                        serde_json::from_value(serde_string["questionFrontendId"].clone()).unwrap()
+                    })
+                    .collect()
+            });
+
+        match question_ids {
+            Some(question_ids) if question_ids.len() != 0 => self.list_problems(
+                list,
+                Some(ListProblemsOptions {
+                    question_ids: Some(question_ids),
+                }),
+            ),
+            _ => {
+                println!(
+                    "{}",
+                    Color::Red(&format!("No problems were found for that tag!",)).make()
+                );
+                Ok(())
+            }
+        }
+    }
+
+    fn list_problems(&mut self, list: List, options: Option<ListProblemsOptions>) -> Result<()> {
         let problems_res = self.fetch_all_problems()?;
         let mut probs: Vec<StatStatusPair> =
             serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
+
+        if let Some(question_ids) = options.and_then(|options| options.question_ids) {
+            probs = probs
+                .into_iter()
+                .filter(|question| {
+                    question_ids.contains(&question.stat.frontend_question_id.to_string())
+                })
+                .collect();
+        }
 
         if list.order.is_some() {
             let orders = OrderBy::from_str(list.order.as_ref().unwrap());
