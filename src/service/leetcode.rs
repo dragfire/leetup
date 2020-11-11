@@ -309,7 +309,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                    translatedName
                    slug
                    questions {
-                     questionId
+                     questionFrontendId
                    }
                  }
                }
@@ -332,7 +332,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 questions
                     .iter()
                     .map(|serde_string| {
-                        serde_json::from_value(serde_string["questionId"].clone()).unwrap()
+                        serde_json::from_value(serde_string["questionFrontendId"].clone()).unwrap()
                     })
                     .collect()
             });
@@ -362,7 +362,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         if let Some(question_ids) = options.and_then(|options| options.question_ids) {
             probs = probs
                 .into_iter()
-                .filter(|question| question_ids.contains(&question.stat.question_id.to_string()))
+                .filter(|question| {
+                    question_ids.contains(&question.stat.frontend_question_id.to_string())
+                })
                 .collect();
         }
 
