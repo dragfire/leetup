@@ -1,13 +1,10 @@
 use crate::{
     client,
-    cmd::{self, Command, List, OrderBy, Query, User},
+    cmd::{self, List, OrderBy, Query, User},
     icon::Icon,
-    service::{
-        self, auth, CacheKey, Comment, CommentStyle, Lang, LangInfo, ListProblemsOptions, Problem,
-        ServiceProvider, Session,
-    },
+    service::{self, auth, CacheKey, Comment, CommentStyle, Problem, ServiceProvider, Session},
     template::{parse_code, InjectPosition, Pattern},
-    Config, Either, InjectCode, LeetUpError, Result, Urls,
+    Config, Either, LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
@@ -16,10 +13,11 @@ use html2text::from_read;
 use leetup_cache::kvstore::KvStore;
 use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use serde_repr::*;
+use std::cmp::{Ord, Ordering};
+use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -150,12 +148,7 @@ impl<'a> Leetcode<'a> {
         Ok(())
     }
 
-    fn print_judge_result(
-        &self,
-        problem: &Problem,
-        test_data: Option<String>,
-        result: SubmissionResult,
-    ) {
+    fn print_judge_result(&self, test_data: Option<String>, result: SubmissionResult) {
         match result.status_code {
             10 => {
                 // Accepted
@@ -269,6 +262,33 @@ Expected:
             }
         }
     }
+    fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
+        let query = r#"
+            query getTopicTag($slug: String!) {
+                 topicTag(slug: $slug) {
+                   name
+                   slug
+                   questions {
+                     difficulty
+                     isPaidOnly
+                     title
+                     titleSlug
+                     questionFrontendId
+                     status
+                   }
+                 }
+               }
+        "#;
+        let body: serde_json::Value = json!({
+            "operationName": "getTopicTag",
+            "variables": {
+                "slug": tag,
+            },
+            "query": query
+        });
+
+        client::post(self, &self.config.urls.graphql, &body, || None)
+    }
 }
 
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
@@ -301,84 +321,36 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(problems_res)
     }
 
-    fn list_problems_with_tag(&mut self, list: List) -> Result<()> {
-        let query = r#"
-            query getTopicTag($slug: String!) {
-                 topicTag(slug: $slug) {
-                   name
-                   translatedName
-                   slug
-                   questions {
-                     questionFrontendId
-                   }
-                 }
-               }
-            "#;
-        let body: serde_json::value::Value = json!(
-        {
-          "operationName": "getTopicTag",
-          "variables": {
-            "slug": list.tag,
-          },
-          "query": query
-        }
-                );
+    fn list_problems(&mut self, list: List) -> Result<()> {
+        let problems_res = self.fetch_all_problems()?;
+        let mut probs: Vec<Box<dyn ProblemInfo>> = vec![];
 
-        let response = client::post(self, &self.config.urls.graphql, &body, || None)?;
+        if let Some(ref tag) = list.tag {
+            let tag_questions =
+                self.get_problems_with_topic_tag(tag)?["data"]["topicTag"]["questions"].clone();
+            let problems: Vec<TopicTagQuestion> = serde_json::from_value(tag_questions)?;
+            for prob in problems {
+                probs.push(Box::new(prob));
+            }
+        } else {
+            let problems: Vec<StatStatusPair> =
+                serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
 
-        let question_ids: Option<HashSet<_>> = response["data"]["topicTag"]["questions"]
-            .as_array()
-            .and_then(|questions| {
-                questions
-                    .iter()
-                    .map(|serde_string| {
-                        serde_json::from_value(serde_string["questionFrontendId"].clone()).unwrap()
-                    })
-                    .collect()
-            });
-
-        match question_ids {
-            Some(question_ids) if question_ids.len() != 0 => self.list_problems(
-                list,
-                Some(ListProblemsOptions {
-                    question_ids: Some(question_ids),
-                }),
-            ),
-            _ => {
-                println!(
-                    "{}",
-                    Color::Red(&format!("No problems were found for that tag!",)).make()
-                );
-                Ok(())
+            for prob in problems {
+                probs.push(Box::new(prob));
             }
         }
-    }
 
-    fn list_problems(&mut self, list: List, options: Option<ListProblemsOptions>) -> Result<()> {
-        let problems_res = self.fetch_all_problems()?;
-        let mut probs: Vec<StatStatusPair> =
-            serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
-
-        if let Some(question_ids) = options.and_then(|options| options.question_ids) {
-            probs = probs
-                .into_iter()
-                .filter(|question| {
-                    question_ids.contains(&question.stat.frontend_question_id.to_string())
-                })
-                .collect();
-        }
-
-        if list.order.is_some() {
-            let orders = OrderBy::from_str(list.order.as_ref().unwrap());
+        if let Some(ref order) = list.order {
+            let orders = OrderBy::from_str(order);
 
             probs.sort_by(|a, b| {
                 let mut ordering = Ordering::Equal;
-                let id_ordering = a
-                    .stat
-                    .frontend_question_id
-                    .cmp(&b.stat.frontend_question_id);
-                let title_ordering = a.stat.question_title_slug.cmp(&b.stat.question_title_slug);
-                let diff_ordering = a.difficulty.level.cmp(&b.difficulty.level);
+                let id_ordering = a.question_id().cmp(&b.question_id());
+                let title_ordering = a.question_title().cmp(&b.question_title());
+                let a_difficulty_level: DifficultyType = a.difficulty().into();
+                let b_difficulty_level: DifficultyType = b.difficulty().into();
+                let diff_ordering = a_difficulty_level.cmp(&b_difficulty_level);
 
                 for order in &orders {
                     match order {
@@ -400,14 +372,14 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         }
 
         if list.query.is_some() || list.keyword.is_some() {
-            let filter_predicate = |o: &&StatStatusPair| {
+            let filter_predicate = |o: &Box<dyn ProblemInfo>| {
                 let default_keyword = String::from("");
                 let keyword = list
                     .keyword
                     .as_ref()
                     .unwrap_or(&default_keyword)
                     .to_ascii_lowercase();
-                let has_keyword = o.stat.question_title_slug.contains(&keyword);
+                let has_keyword = o.question_title().to_lowercase().contains(&keyword);
 
                 if list.query.is_none() {
                     has_keyword
@@ -417,10 +389,13 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 }
             };
 
-            let filtered_probs: Vec<&StatStatusPair> =
-                probs.iter().filter(filter_predicate).collect();
-
-            pretty_list(filtered_probs.into_iter());
+            let mut filtered_problems: Vec<Box<dyn ProblemInfo>> = vec![];
+            for prob in probs {
+                if filter_predicate(&prob) {
+                    filtered_problems.push(prob);
+                }
+            }
+            pretty_list(filtered_problems.iter());
         } else {
             pretty_list(probs.iter());
         }
@@ -625,7 +600,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .verify
             .replace("$id", &response["interpret_id"].as_str().unwrap());
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
-        self.print_judge_result(&problem, Some(test_data), result);
+        self.print_judge_result(Some(test_data), result);
 
         Ok(())
     }
@@ -647,7 +622,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .verify
             .replace("$id", &response["submission_id"].to_string());
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
-        self.print_judge_result(&problem, None, result);
+        self.print_judge_result(None, result);
 
         Ok(())
     }
@@ -703,23 +678,69 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Difficulty {
-    pub level: usize,
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Serialize_repr, Deserialize_repr, Debug)]
+#[repr(u8)]
+pub enum DifficultyType {
+    Easy = 1,
+    Medium,
+    Hard,
 }
+use DifficultyType::*;
 
-impl ToString for Difficulty {
-    fn to_string(&self) -> String {
-        match self.level {
-            1 => Green.paint(String::from("Easy")).to_string(),
-            2 => Yellow.paint(String::from("Medium")).to_string(),
-            3 => Red.paint(String::from("Hard")).to_string(),
-            _ => String::from("UnknownLevel"),
+impl FromStr for DifficultyType {
+    type Err = LeetUpError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let easy = Easy.to_string();
+        let medium = Medium.to_string();
+        let hard = Hard.to_string();
+        match s {
+            x if x == easy => Ok(Easy),
+            x if x == medium => Ok(Medium),
+            x if x == hard => Ok(Hard),
+            _ => Err(LeetUpError::UnexpectedCommand),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+impl ToString for DifficultyType {
+    fn to_string(&self) -> String {
+        match self {
+            Easy => "Easy".into(),
+            Medium => "Medium".into(),
+            Hard => "Hard".into(),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum Difficulty {
+    Cardinal { level: DifficultyType },
+    String(String),
+}
+
+impl<'a> From<&'_ Difficulty> for DifficultyType {
+    fn from(difficulty: &Difficulty) -> Self {
+        match difficulty {
+            Difficulty::Cardinal { level } => level.clone(),
+            Difficulty::String(s) => DifficultyType::from_str(s).unwrap(),
+        }
+    }
+}
+
+impl ToString for Difficulty {
+    fn to_string(&self) -> String {
+        let level: DifficultyType = self.into();
+        match level {
+            Easy => Green.paint(Easy.to_string()).to_string(),
+            Medium => Yellow.paint(Medium.to_string()).to_string(),
+            Hard => Red.paint(Hard.to_string()).to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
 pub struct Stat {
     pub question_id: usize,
 
@@ -744,7 +765,7 @@ pub struct Stat {
     pub is_new_question: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Deserialize, Debug)]
 pub struct StatStatusPair {
     pub stat: Stat,
     pub status: Option<String>,
@@ -755,7 +776,23 @@ pub struct StatStatusPair {
     pub progress: isize,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
+pub struct TopicTagQuestion {
+    pub status: Option<String>,
+    pub difficulty: Difficulty,
+    pub title: String,
+
+    #[serde(rename = "isPaidOnly")]
+    pub is_paid_only: bool,
+
+    #[serde(rename = "titleSlug")]
+    pub title_slug: String,
+
+    #[serde(rename = "questionFrontendId")]
+    pub question_frontend_id: String,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct ListResponse {
     pub user_name: String,
     pub num_solved: usize,
@@ -769,7 +806,7 @@ pub struct ListResponse {
     pub category_slug: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct CodeDefinition {
     value: String,
     text: String,
@@ -778,7 +815,7 @@ struct CodeDefinition {
     default_code: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct SubmissionResult {
     pub code_output: Option<Either>,
     pub code_answer: Option<Either>,
@@ -808,23 +845,112 @@ struct SubmissionResult {
     pub total_testcases: Option<u32>,
 }
 
-fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
-    for obj in probs {
-        let qstat = &obj.stat;
+trait ProblemInfo {
+    fn question_id(&self) -> usize;
 
-        let starred_icon = if obj.is_favor {
+    fn question_title(&self) -> &str;
+
+    fn difficulty(&self) -> &Difficulty;
+
+    fn is_favorite(&self) -> Option<bool>;
+
+    fn is_paid_only(&self) -> bool;
+
+    fn status(&self) -> Option<&str>;
+}
+
+impl ProblemInfo for StatStatusPair {
+    fn question_title(&self) -> &str {
+        self.stat.question_title.as_str()
+    }
+
+    fn question_id(&self) -> usize {
+        self.stat.frontend_question_id
+    }
+
+    fn difficulty(&self) -> &Difficulty {
+        &self.difficulty
+    }
+
+    fn is_favorite(&self) -> Option<bool> {
+        Some(self.is_favor)
+    }
+
+    fn is_paid_only(&self) -> bool {
+        self.paid_only
+    }
+
+    fn status(&self) -> Option<&str> {
+        self.status.as_ref().map(String::as_ref)
+    }
+}
+
+impl ProblemInfo for TopicTagQuestion {
+    fn question_title(&self) -> &str {
+        self.title.as_str()
+    }
+
+    fn question_id(&self) -> usize {
+        self.question_frontend_id.parse().unwrap()
+    }
+
+    fn difficulty(&self) -> &Difficulty {
+        &self.difficulty
+    }
+
+    fn is_favorite(&self) -> Option<bool> {
+        None
+    }
+
+    fn is_paid_only(&self) -> bool {
+        self.is_paid_only
+    }
+
+    fn status(&self) -> Option<&str> {
+        self.status.as_ref().map(String::as_ref)
+    }
+}
+
+impl PartialEq for dyn ProblemInfo + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.question_id().eq(&other.question_id())
+    }
+}
+
+impl Eq for dyn ProblemInfo + '_ {}
+
+impl PartialOrd for dyn ProblemInfo + '_ {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for dyn ProblemInfo + '_ {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.question_id().cmp(&other.question_id())
+    }
+}
+
+fn pretty_list<'a, T: Iterator<Item = &'a Box<dyn ProblemInfo + 'static>>>(probs: T) {
+    for prob in probs {
+        let is_favorite = if let Some(is_favor) = prob.is_favorite() {
+            is_favor
+        } else {
+            false
+        };
+        let starred_icon = if is_favorite {
             Yellow.paint(Icon::Star.to_string()).to_string()
         } else {
             Icon::Empty.to_string()
         };
 
-        let locked_icon = if obj.paid_only {
+        let locked_icon = if prob.is_paid_only() {
             Red.paint(Icon::Lock.to_string()).to_string()
         } else {
             Icon::Empty.to_string()
         };
 
-        let acd = if obj.status.is_some() {
+        let acd = if prob.status().is_some() {
             Green.paint(Icon::Yes.to_string()).to_string()
         } else {
             Icon::Empty.to_string()
@@ -835,30 +961,36 @@ fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
             starred_icon,
             locked_icon,
             acd,
-            qstat.frontend_question_id,
-            qstat.question_title,
-            obj.difficulty.to_string()
+            prob.question_id(),
+            prob.question_title(),
+            prob.difficulty().to_string()
         );
     }
 }
 
-fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
+fn apply_queries(queries: &Vec<Query>, o: &Box<dyn ProblemInfo>) -> bool {
     let mut is_satisfied = true;
+    let difficulty: DifficultyType = o.difficulty().into();
+    let is_favorite = if let Some(is_favor) = o.is_favorite() {
+        is_favor
+    } else {
+        false
+    };
 
     for q in queries {
         match q {
-            Query::Easy => is_satisfied &= o.difficulty.level == 1,
-            Query::NotEasy => is_satisfied &= o.difficulty.level != 1,
-            Query::Medium => is_satisfied &= o.difficulty.level == 2,
-            Query::NotMedium => is_satisfied &= o.difficulty.level != 2,
-            Query::Hard => is_satisfied &= o.difficulty.level == 3,
-            Query::NotHard => is_satisfied &= o.difficulty.level != 3,
-            Query::Locked => is_satisfied &= o.paid_only,
-            Query::Unlocked => is_satisfied &= !o.paid_only,
-            Query::Done => is_satisfied &= o.status.is_some(),
-            Query::NotDone => is_satisfied &= o.status.is_none(),
-            Query::Starred => is_satisfied &= o.is_favor,
-            Query::Unstarred => is_satisfied &= !o.is_favor,
+            Query::Easy => is_satisfied &= difficulty == Easy,
+            Query::NotEasy => is_satisfied &= difficulty != Easy,
+            Query::Medium => is_satisfied &= difficulty == Medium,
+            Query::NotMedium => is_satisfied &= difficulty != Medium,
+            Query::Hard => is_satisfied &= difficulty == Hard,
+            Query::NotHard => is_satisfied &= difficulty != Hard,
+            Query::Locked => is_satisfied &= o.is_paid_only(),
+            Query::Unlocked => is_satisfied &= !o.is_paid_only(),
+            Query::Done => is_satisfied &= o.status().is_some(),
+            Query::NotDone => is_satisfied &= o.status().is_none(),
+            Query::Starred => is_satisfied &= is_favorite,
+            Query::Unstarred => is_satisfied &= !is_favorite,
         }
     }
 

@@ -1,13 +1,12 @@
 // TODO refactor this file
 use crate::{
-    cmd::{self, Command, User},
+    cmd::{self, User},
     Config, Result,
 };
 use cookie::Cookie;
 use leetup_cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::Path;
 use std::str::FromStr;
 
 /// ServiceProvider trait provides all the functionalities required to solve problems
@@ -16,12 +15,7 @@ pub trait ServiceProvider<'a> {
     fn session(&self) -> Option<&Session>;
     fn config(&self) -> Result<&Config>;
     fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value>;
-    fn list_problems(
-        &mut self,
-        list: cmd::List,
-        options: Option<ListProblemsOptions>,
-    ) -> Result<()>;
-    fn list_problems_with_tag(&mut self, list: cmd::List) -> Result<()>;
+    fn list_problems(&mut self, list: cmd::List) -> Result<()>;
     fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()>;
     fn problem_test(&self, test: cmd::Test) -> Result<()>;
     fn problem_submit(&self, submit: cmd::Submit) -> Result<()>;
