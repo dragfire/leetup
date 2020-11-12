@@ -1,4 +1,3 @@
-#![allow(unused_variables, unused_imports, dead_code)]
 pub use config::*;
 pub use error::{LeetUpError, Result};
 

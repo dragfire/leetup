@@ -2,7 +2,7 @@ use crate::{service::Problem, template::Pattern, LeetUpError, Result};
 use log::*;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, BufRead, Read};
+use std::io::Read;
 use std::path::Path;
 use std::str::FromStr;
 

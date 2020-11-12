@@ -5,15 +5,7 @@ use crate::{
 use colci::Color;
 use log::{debug, error, info};
 use regex::Regex;
-use reqwest::{
-    blocking::{Body, Client, RequestBuilder, Response},
-    header::HeaderMap,
-    header::HeaderValue,
-    header::CONTENT_TYPE,
-    header::COOKIE,
-    header::SET_COOKIE,
-    StatusCode,
-};
+use reqwest::blocking::Client;
 use spinners::{Spinner, Spinners};
 use std::io::{BufWriter, Write};
 use std::str::FromStr;

@@ -1,5 +1,3 @@
-use crate::{service::Problem, LeetUpError, Result};
-
 #[derive(Copy, Clone)]
 pub enum Pattern {
     LeetUpInfo,
@@ -72,10 +70,6 @@ pub fn parse_code(code: &str) -> Option<String> {
     let code = code.get(..end_index)?;
 
     Some(code.into())
-}
-
-pub fn inject_code(problem: &mut Problem) -> Result<()> {
-    Ok(())
 }
 
 #[test]

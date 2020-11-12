@@ -47,9 +47,6 @@ mod tests {
 
         let n = result.len() - 1;
 
-        // Test total number of problems
-        assert!(n >= 1649);
-
         // Test OrderBy works by check first and last id
         //
         // NOTE: For some reason, result.last() is empty!

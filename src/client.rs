@@ -1,20 +1,14 @@
 use crate::{
-    service::{auth, Problem, ServiceProvider, Session},
-    Config, LeetUpError, Result, Urls,
+    service::{ServiceProvider, Session},
+    LeetUpError, Result,
 };
 use anyhow::anyhow;
-use cookie::{Cookie, CookieJar};
-use log::debug;
 use reqwest::{
-    blocking::{Body, Client, RequestBuilder, Response},
+    blocking::{Client, Response},
     header,
     header::HeaderMap,
     header::HeaderValue,
-    header::CONTENT_TYPE,
-    header::SET_COOKIE,
-    StatusCode,
 };
-use serde_json::json;
 
 fn headers_with_session(headers_opt: Option<HeaderMap>, session: Option<&Session>) -> HeaderMap {
     let mut headers = HeaderMap::new();

@@ -1,13 +1,10 @@
 use crate::{
     client,
-    cmd::{self, Command, List, OrderBy, Query, User},
+    cmd::{self, List, OrderBy, Query, User},
     icon::Icon,
-    service::{
-        self, auth, CacheKey, Comment, CommentStyle, Lang, LangInfo, ListProblemsOptions, Problem,
-        ServiceProvider, Session,
-    },
+    service::{self, auth, CacheKey, Comment, CommentStyle, Problem, ServiceProvider, Session},
     template::{parse_code, InjectPosition, Pattern},
-    Config, Either, InjectCode, LeetUpError, Result, Urls,
+    Config, Either, LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
@@ -18,8 +15,9 @@ use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use serde_repr::*;
+use std::cmp::{Ord, Ordering};
+use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -150,12 +148,7 @@ impl<'a> Leetcode<'a> {
         Ok(())
     }
 
-    fn print_judge_result(
-        &self,
-        problem: &Problem,
-        test_data: Option<String>,
-        result: SubmissionResult,
-    ) {
+    fn print_judge_result(&self, test_data: Option<String>, result: SubmissionResult) {
         match result.status_code {
             10 => {
                 // Accepted
@@ -355,8 +348,8 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 let mut ordering = Ordering::Equal;
                 let id_ordering = a.question_id().cmp(&b.question_id());
                 let title_ordering = a.question_title().cmp(&b.question_title());
-                let a_difficulty_level: u8 = a.difficulty().into();
-                let b_difficulty_level: u8 = b.difficulty().into();
+                let a_difficulty_level: DifficultyType = a.difficulty().into();
+                let b_difficulty_level: DifficultyType = b.difficulty().into();
                 let diff_ordering = a_difficulty_level.cmp(&b_difficulty_level);
 
                 for order in &orders {
@@ -374,6 +367,8 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
                 ordering
             });
+        } else {
+            probs.sort_by(Ord::cmp);
         }
 
         if list.query.is_some() || list.keyword.is_some() {
@@ -400,9 +395,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                     filtered_problems.push(prob);
                 }
             }
-            pretty_list(filtered_problems.into_iter());
+            pretty_list(filtered_problems.iter());
         } else {
-            pretty_list(probs.into_iter());
+            pretty_list(probs.iter());
         }
 
         Ok(())
@@ -605,7 +600,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .verify
             .replace("$id", &response["interpret_id"].as_str().unwrap());
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
-        self.print_judge_result(&problem, Some(test_data), result);
+        self.print_judge_result(Some(test_data), result);
 
         Ok(())
     }
@@ -627,7 +622,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .verify
             .replace("$id", &response["submission_id"].to_string());
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
-        self.print_judge_result(&problem, None, result);
+        self.print_judge_result(None, result);
 
         Ok(())
     }
@@ -683,33 +678,64 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 }
 
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Serialize_repr, Deserialize_repr, Debug)]
+#[repr(u8)]
+pub enum DifficultyType {
+    Easy = 1,
+    Medium,
+    Hard,
+}
+use DifficultyType::*;
+
+impl FromStr for DifficultyType {
+    type Err = LeetUpError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let easy = Easy.to_string();
+        let medium = Medium.to_string();
+        let hard = Hard.to_string();
+        match s {
+            x if x == easy => Ok(Easy),
+            x if x == medium => Ok(Medium),
+            x if x == hard => Ok(Hard),
+            _ => Err(LeetUpError::UnexpectedCommand),
+        }
+    }
+}
+
+impl ToString for DifficultyType {
+    fn to_string(&self) -> String {
+        match self {
+            Easy => "Easy".into(),
+            Medium => "Medium".into(),
+            Hard => "Hard".into(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 #[serde(untagged)]
 pub enum Difficulty {
-    Cardinal { level: u8 },
+    Cardinal { level: DifficultyType },
     String(String),
 }
 
-impl<'a> From<&'_ Difficulty> for u8 {
+impl<'a> From<&'_ Difficulty> for DifficultyType {
     fn from(difficulty: &Difficulty) -> Self {
         match difficulty {
-            Difficulty::Cardinal { level } => *level,
-            Difficulty::String(s) => 1,
+            Difficulty::Cardinal { level } => level.clone(),
+            Difficulty::String(s) => DifficultyType::from_str(s).unwrap(),
         }
     }
 }
 
 impl ToString for Difficulty {
     fn to_string(&self) -> String {
-        const EASY: &str = "Easy";
-        const HARD: &str = "Hard";
-        const MEDIUM: &str = "MEDIUM";
-        let level: u8 = self.into();
+        let level: DifficultyType = self.into();
         match level {
-            1 => Green.paint(String::from("Easy")).to_string(),
-            2 => Yellow.paint(String::from("Medium")).to_string(),
-            3 => Red.paint(String::from("Hard")).to_string(),
-            _ => String::from("UnknownLevel"),
+            Easy => Green.paint(Easy.to_string()).to_string(),
+            Medium => Yellow.paint(Medium.to_string()).to_string(),
+            Hard => Red.paint(Hard.to_string()).to_string(),
         }
     }
 }
@@ -885,7 +911,27 @@ impl ProblemInfo for TopicTagQuestion {
     }
 }
 
-fn pretty_list<'a, T: Iterator<Item = Box<dyn ProblemInfo + 'static>>>(probs: T) {
+impl PartialEq for dyn ProblemInfo + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.question_id().eq(&other.question_id())
+    }
+}
+
+impl Eq for dyn ProblemInfo + '_ {}
+
+impl PartialOrd for dyn ProblemInfo + '_ {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for dyn ProblemInfo + '_ {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.question_id().cmp(&other.question_id())
+    }
+}
+
+fn pretty_list<'a, T: Iterator<Item = &'a Box<dyn ProblemInfo + 'static>>>(probs: T) {
     for prob in probs {
         let is_favorite = if let Some(is_favor) = prob.is_favorite() {
             is_favor
@@ -924,7 +970,7 @@ fn pretty_list<'a, T: Iterator<Item = Box<dyn ProblemInfo + 'static>>>(probs: T)
 
 fn apply_queries(queries: &Vec<Query>, o: &Box<dyn ProblemInfo>) -> bool {
     let mut is_satisfied = true;
-    let difficulty: u8 = o.difficulty().into();
+    let difficulty: DifficultyType = o.difficulty().into();
     let is_favorite = if let Some(is_favor) = o.is_favorite() {
         is_favor
     } else {
@@ -933,12 +979,12 @@ fn apply_queries(queries: &Vec<Query>, o: &Box<dyn ProblemInfo>) -> bool {
 
     for q in queries {
         match q {
-            Query::Easy => is_satisfied &= difficulty == 1,
-            Query::NotEasy => is_satisfied &= difficulty != 1,
-            Query::Medium => is_satisfied &= difficulty == 2,
-            Query::NotMedium => is_satisfied &= difficulty != 2,
-            Query::Hard => is_satisfied &= difficulty == 3,
-            Query::NotHard => is_satisfied &= difficulty != 3,
+            Query::Easy => is_satisfied &= difficulty == Easy,
+            Query::NotEasy => is_satisfied &= difficulty != Easy,
+            Query::Medium => is_satisfied &= difficulty == Medium,
+            Query::NotMedium => is_satisfied &= difficulty != Medium,
+            Query::Hard => is_satisfied &= difficulty == Hard,
+            Query::NotHard => is_satisfied &= difficulty != Hard,
             Query::Locked => is_satisfied &= o.is_paid_only(),
             Query::Unlocked => is_satisfied &= !o.is_paid_only(),
             Query::Done => is_satisfied &= o.status().is_some(),

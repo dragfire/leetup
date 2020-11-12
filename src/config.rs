@@ -1,14 +1,12 @@
 use crate::{LeetUpError, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::json;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 
 type LangInjectCode = HashMap<String, InjectCode>;
 
-// TODO move to ~/.leetup/config.json
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub urls: Urls,
@@ -100,8 +98,10 @@ pub struct InjectCode {
 
 #[test]
 fn test_config() {
+    use std::io::Write;
+
     let data_dir = tempfile::tempdir().unwrap();
-    let data = json!({
+    let data = serde_json::json!({
         "inject_code": {},
         "urls": {
             "base": vec![""]

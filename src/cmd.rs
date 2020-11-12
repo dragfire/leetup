@@ -1,5 +1,5 @@
 use crate::{
-    service::{self, leetcode::Leetcode, Lang, Problem, ServiceProvider},
+    service::{leetcode::Leetcode, Lang, ServiceProvider},
     Result,
 };
 use log::debug;

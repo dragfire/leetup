@@ -1,13 +1,12 @@
 // TODO refactor this file
 use crate::{
-    cmd::{self, Command, User},
+    cmd::{self, User},
     Config, Result,
 };
 use cookie::Cookie;
 use leetup_cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::Path;
 use std::str::FromStr;
 
 /// ServiceProvider trait provides all the functionalities required to solve problems
