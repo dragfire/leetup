@@ -13,7 +13,7 @@ use html2text::from_read;
 use leetup_cache::kvstore::KvStore;
 use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use serde_repr::*;
 use std::cmp::{Ord, Ordering};
@@ -269,16 +269,16 @@ Expected:
                    name
                    slug
                    questions {
-                     status
                      difficulty
                      isPaidOnly
                      title
                      titleSlug
                      questionFrontendId
+                     status
                    }
                  }
                }
-            "#;
+        "#;
         let body: serde_json::Value = json!({
             "operationName": "getTopicTag",
             "variables": {
@@ -326,9 +326,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let mut probs: Vec<Box<dyn ProblemInfo>> = vec![];
 
         if let Some(ref tag) = list.tag {
-            let problems: Vec<TopicTagQuestion> = serde_json::from_value(
-                self.get_problems_with_topic_tag(tag)?["data"]["topicTag"]["questions"].clone(),
-            )?;
+            let tag_questions =
+                self.get_problems_with_topic_tag(tag)?["data"]["topicTag"]["questions"].clone();
+            let problems: Vec<TopicTagQuestion> = serde_json::from_value(tag_questions)?;
             for prob in problems {
                 probs.push(Box::new(prob));
             }
@@ -713,7 +713,7 @@ impl ToString for DifficultyType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
+#[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Difficulty {
     Cardinal { level: DifficultyType },
@@ -740,7 +740,7 @@ impl ToString for Difficulty {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Deserialize, Debug)]
 pub struct Stat {
     pub question_id: usize,
 
@@ -765,7 +765,7 @@ pub struct Stat {
     pub is_new_question: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Deserialize, Debug)]
 pub struct StatStatusPair {
     pub stat: Stat,
     pub status: Option<String>,
@@ -776,7 +776,7 @@ pub struct StatStatusPair {
     pub progress: isize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Deserialize, Debug)]
 pub struct TopicTagQuestion {
     pub status: Option<String>,
     pub difficulty: Difficulty,
@@ -792,7 +792,7 @@ pub struct TopicTagQuestion {
     pub question_frontend_id: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct ListResponse {
     pub user_name: String,
     pub num_solved: usize,
@@ -806,7 +806,7 @@ pub struct ListResponse {
     pub category_slug: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct CodeDefinition {
     value: String,
     text: String,
@@ -815,7 +815,7 @@ struct CodeDefinition {
     default_code: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct SubmissionResult {
     pub code_output: Option<Either>,
     pub code_answer: Option<Either>,
