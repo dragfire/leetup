@@ -330,14 +330,22 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     fn list_problems(&mut self, list: List) -> Result<()> {
         let problems_res = self.fetch_all_problems()?;
-        let mut probs: Vec<StatStatusPair>;
+        let mut probs: Vec<Box<dyn ProblemInfo>> = vec![];
 
         if let Some(ref tag) = list.tag {
-            probs = serde_json::from_value(
+            let problems: Vec<TopicTagQuestion> = serde_json::from_value(
                 self.get_problems_with_topic_tag(tag)?["data"]["topicTag"]["questions"].clone(),
             )?;
+            for prob in problems {
+                probs.push(Box::new(prob));
+            }
         } else {
-            probs = serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
+            let problems: Vec<StatStatusPair> =
+                serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
+
+            for prob in problems {
+                probs.push(Box::new(prob));
+            }
         }
 
         if let Some(ref order) = list.order {
@@ -345,12 +353,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
             probs.sort_by(|a, b| {
                 let mut ordering = Ordering::Equal;
-                let id_ordering = a
-                    .stat
-                    .frontend_question_id
-                    .cmp(&b.stat.frontend_question_id);
-                let title_ordering = a.stat.question_title_slug.cmp(&b.stat.question_title_slug);
-                let diff_ordering = a.difficulty.level.cmp(&b.difficulty.level);
+                let id_ordering = a.question_id().cmp(&b.question_id());
+                let title_ordering = a.question_title().cmp(&b.question_title());
+                let a_difficulty_level: u8 = a.difficulty().into();
+                let b_difficulty_level: u8 = b.difficulty().into();
+                let diff_ordering = a_difficulty_level.cmp(&b_difficulty_level);
 
                 for order in &orders {
                     match order {
@@ -367,19 +374,17 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
                 ordering
             });
-        } else {
-            probs.sort_by(Ord::cmp);
         }
 
         if list.query.is_some() || list.keyword.is_some() {
-            let filter_predicate = |o: &&StatStatusPair| {
+            let filter_predicate = |o: &Box<dyn ProblemInfo>| {
                 let default_keyword = String::from("");
                 let keyword = list
                     .keyword
                     .as_ref()
                     .unwrap_or(&default_keyword)
                     .to_ascii_lowercase();
-                let has_keyword = o.stat.question_title_slug.contains(&keyword);
+                let has_keyword = o.question_title().to_lowercase().contains(&keyword);
 
                 if list.query.is_none() {
                     has_keyword
@@ -389,12 +394,15 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 }
             };
 
-            let filtered_probs: Vec<&StatStatusPair> =
-                probs.iter().filter(filter_predicate).collect();
-
-            pretty_list(filtered_probs.into_iter());
+            let mut filtered_problems: Vec<Box<dyn ProblemInfo>> = vec![];
+            for prob in probs {
+                if filter_predicate(&prob) {
+                    filtered_problems.push(prob);
+                }
+            }
+            pretty_list(filtered_problems.into_iter());
         } else {
-            pretty_list(probs.iter());
+            pretty_list(probs.into_iter());
         }
 
         Ok(())
@@ -675,14 +683,29 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Difficulty {
-    pub level: usize,
+#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
+#[serde(untagged)]
+pub enum Difficulty {
+    Cardinal { level: u8 },
+    String(String),
+}
+
+impl<'a> From<&'_ Difficulty> for u8 {
+    fn from(difficulty: &Difficulty) -> Self {
+        match difficulty {
+            Difficulty::Cardinal { level } => *level,
+            Difficulty::String(s) => 1,
+        }
+    }
 }
 
 impl ToString for Difficulty {
     fn to_string(&self) -> String {
-        match self.level {
+        const EASY: &str = "Easy";
+        const HARD: &str = "Hard";
+        const MEDIUM: &str = "MEDIUM";
+        let level: u8 = self.into();
+        match level {
             1 => Green.paint(String::from("Easy")).to_string(),
             2 => Yellow.paint(String::from("Medium")).to_string(),
             3 => Red.paint(String::from("Hard")).to_string(),
@@ -722,9 +745,25 @@ pub struct StatStatusPair {
     pub status: Option<String>,
     pub difficulty: Difficulty,
     pub paid_only: bool,
-    pub is_favor: Option<bool>,
-    pub frequency: Option<isize>,
-    pub progress: Option<isize>,
+    pub is_favor: bool,
+    pub frequency: isize,
+    pub progress: isize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct TopicTagQuestion {
+    pub status: Option<String>,
+    pub difficulty: Difficulty,
+    pub title: String,
+
+    #[serde(rename = "isPaidOnly")]
+    pub is_paid_only: bool,
+
+    #[serde(rename = "titleSlug")]
+    pub title_slug: String,
+
+    #[serde(rename = "questionFrontendId")]
+    pub question_frontend_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -780,28 +819,92 @@ struct SubmissionResult {
     pub total_testcases: Option<u32>,
 }
 
-fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
-    for obj in probs {
-        let qstat = &obj.stat;
-        let is_favorite = if let Some(is_favor) = obj.is_favor {
+trait ProblemInfo {
+    fn question_id(&self) -> usize;
+
+    fn question_title(&self) -> &str;
+
+    fn difficulty(&self) -> &Difficulty;
+
+    fn is_favorite(&self) -> Option<bool>;
+
+    fn is_paid_only(&self) -> bool;
+
+    fn status(&self) -> Option<&str>;
+}
+
+impl ProblemInfo for StatStatusPair {
+    fn question_title(&self) -> &str {
+        self.stat.question_title.as_str()
+    }
+
+    fn question_id(&self) -> usize {
+        self.stat.frontend_question_id
+    }
+
+    fn difficulty(&self) -> &Difficulty {
+        &self.difficulty
+    }
+
+    fn is_favorite(&self) -> Option<bool> {
+        Some(self.is_favor)
+    }
+
+    fn is_paid_only(&self) -> bool {
+        self.paid_only
+    }
+
+    fn status(&self) -> Option<&str> {
+        self.status.as_ref().map(String::as_ref)
+    }
+}
+
+impl ProblemInfo for TopicTagQuestion {
+    fn question_title(&self) -> &str {
+        self.title.as_str()
+    }
+
+    fn question_id(&self) -> usize {
+        self.question_frontend_id.parse().unwrap()
+    }
+
+    fn difficulty(&self) -> &Difficulty {
+        &self.difficulty
+    }
+
+    fn is_favorite(&self) -> Option<bool> {
+        None
+    }
+
+    fn is_paid_only(&self) -> bool {
+        self.is_paid_only
+    }
+
+    fn status(&self) -> Option<&str> {
+        self.status.as_ref().map(String::as_ref)
+    }
+}
+
+fn pretty_list<'a, T: Iterator<Item = Box<dyn ProblemInfo + 'static>>>(probs: T) {
+    for prob in probs {
+        let is_favorite = if let Some(is_favor) = prob.is_favorite() {
             is_favor
         } else {
             false
         };
-
         let starred_icon = if is_favorite {
             Yellow.paint(Icon::Star.to_string()).to_string()
         } else {
             Icon::Empty.to_string()
         };
 
-        let locked_icon = if obj.paid_only {
+        let locked_icon = if prob.is_paid_only() {
             Red.paint(Icon::Lock.to_string()).to_string()
         } else {
             Icon::Empty.to_string()
         };
 
-        let acd = if obj.status.is_some() {
+        let acd = if prob.status().is_some() {
             Green.paint(Icon::Yes.to_string()).to_string()
         } else {
             Icon::Empty.to_string()
@@ -812,16 +915,17 @@ fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
             starred_icon,
             locked_icon,
             acd,
-            qstat.frontend_question_id,
-            qstat.question_title,
-            obj.difficulty.to_string()
+            prob.question_id(),
+            prob.question_title(),
+            prob.difficulty().to_string()
         );
     }
 }
 
-fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
+fn apply_queries(queries: &Vec<Query>, o: &Box<dyn ProblemInfo>) -> bool {
     let mut is_satisfied = true;
-    let is_favorite = if let Some(is_favor) = o.is_favor {
+    let difficulty: u8 = o.difficulty().into();
+    let is_favorite = if let Some(is_favor) = o.is_favorite() {
         is_favor
     } else {
         false
@@ -829,16 +933,16 @@ fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
 
     for q in queries {
         match q {
-            Query::Easy => is_satisfied &= o.difficulty.level == 1,
-            Query::NotEasy => is_satisfied &= o.difficulty.level != 1,
-            Query::Medium => is_satisfied &= o.difficulty.level == 2,
-            Query::NotMedium => is_satisfied &= o.difficulty.level != 2,
-            Query::Hard => is_satisfied &= o.difficulty.level == 3,
-            Query::NotHard => is_satisfied &= o.difficulty.level != 3,
-            Query::Locked => is_satisfied &= o.paid_only,
-            Query::Unlocked => is_satisfied &= !o.paid_only,
-            Query::Done => is_satisfied &= o.status.is_some(),
-            Query::NotDone => is_satisfied &= o.status.is_none(),
+            Query::Easy => is_satisfied &= difficulty == 1,
+            Query::NotEasy => is_satisfied &= difficulty != 1,
+            Query::Medium => is_satisfied &= difficulty == 2,
+            Query::NotMedium => is_satisfied &= difficulty != 2,
+            Query::Hard => is_satisfied &= difficulty == 3,
+            Query::NotHard => is_satisfied &= difficulty != 3,
+            Query::Locked => is_satisfied &= o.is_paid_only(),
+            Query::Unlocked => is_satisfied &= !o.is_paid_only(),
+            Query::Done => is_satisfied &= o.status().is_some(),
+            Query::NotDone => is_satisfied &= o.status().is_none(),
             Query::Starred => is_satisfied &= is_favorite,
             Query::Unstarred => is_satisfied &= !is_favorite,
         }
