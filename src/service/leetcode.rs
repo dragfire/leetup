@@ -269,6 +269,33 @@ Expected:
             }
         }
     }
+    fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
+        let query = r#"
+            query getTopicTag($slug: String!) {
+                 topicTag(slug: $slug) {
+                   name
+                   slug
+                   questions {
+                     status
+                     difficulty
+                     isPaidOnly
+                     title
+                     titleSlug
+                     questionFrontendId
+                   }
+                 }
+               }
+            "#;
+        let body: serde_json::Value = json!({
+            "operationName": "getTopicTag",
+            "variables": {
+                "slug": tag,
+            },
+            "query": query
+        });
+
+        client::post(self, &self.config.urls.graphql, &body, || None)
+    }
 }
 
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
@@ -301,75 +328,20 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(problems_res)
     }
 
-    fn list_problems_with_tag(&mut self, list: List) -> Result<()> {
-        let query = r#"
-            query getTopicTag($slug: String!) {
-                 topicTag(slug: $slug) {
-                   name
-                   translatedName
-                   slug
-                   questions {
-                     questionFrontendId
-                   }
-                 }
-               }
-            "#;
-        let body: serde_json::value::Value = json!(
-        {
-          "operationName": "getTopicTag",
-          "variables": {
-            "slug": list.tag,
-          },
-          "query": query
-        }
-                );
-
-        let response = client::post(self, &self.config.urls.graphql, &body, || None)?;
-
-        let question_ids: Option<HashSet<_>> = response["data"]["topicTag"]["questions"]
-            .as_array()
-            .and_then(|questions| {
-                questions
-                    .iter()
-                    .map(|serde_string| {
-                        serde_json::from_value(serde_string["questionFrontendId"].clone()).unwrap()
-                    })
-                    .collect()
-            });
-
-        match question_ids {
-            Some(question_ids) if question_ids.len() != 0 => self.list_problems(
-                list,
-                Some(ListProblemsOptions {
-                    question_ids: Some(question_ids),
-                }),
-            ),
-            _ => {
-                println!(
-                    "{}",
-                    Color::Red(&format!("No problems were found for that tag!",)).make()
-                );
-                Ok(())
-            }
-        }
-    }
-
-    fn list_problems(&mut self, list: List, options: Option<ListProblemsOptions>) -> Result<()> {
+    fn list_problems(&mut self, list: List) -> Result<()> {
         let problems_res = self.fetch_all_problems()?;
-        let mut probs: Vec<StatStatusPair> =
-            serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
+        let mut probs: Vec<StatStatusPair>;
 
-        if let Some(question_ids) = options.and_then(|options| options.question_ids) {
-            probs = probs
-                .into_iter()
-                .filter(|question| {
-                    question_ids.contains(&question.stat.frontend_question_id.to_string())
-                })
-                .collect();
+        if let Some(ref tag) = list.tag {
+            probs = serde_json::from_value(
+                self.get_problems_with_topic_tag(tag)?["data"]["topicTag"]["questions"].clone(),
+            )?;
+        } else {
+            probs = serde_json::from_value(problems_res["stat_status_pairs"].clone())?;
         }
 
-        if list.order.is_some() {
-            let orders = OrderBy::from_str(list.order.as_ref().unwrap());
+        if let Some(ref order) = list.order {
+            let orders = OrderBy::from_str(order);
 
             probs.sort_by(|a, b| {
                 let mut ordering = Ordering::Equal;
@@ -750,9 +722,9 @@ pub struct StatStatusPair {
     pub status: Option<String>,
     pub difficulty: Difficulty,
     pub paid_only: bool,
-    pub is_favor: bool,
-    pub frequency: isize,
-    pub progress: isize,
+    pub is_favor: Option<bool>,
+    pub frequency: Option<isize>,
+    pub progress: Option<isize>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -811,8 +783,13 @@ struct SubmissionResult {
 fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
     for obj in probs {
         let qstat = &obj.stat;
+        let is_favorite = if let Some(is_favor) = obj.is_favor {
+            is_favor
+        } else {
+            false
+        };
 
-        let starred_icon = if obj.is_favor {
+        let starred_icon = if is_favorite {
             Yellow.paint(Icon::Star.to_string()).to_string()
         } else {
             Icon::Empty.to_string()
@@ -844,6 +821,11 @@ fn pretty_list<'a, T: Iterator<Item = &'a StatStatusPair>>(probs: T) {
 
 fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
     let mut is_satisfied = true;
+    let is_favorite = if let Some(is_favor) = o.is_favor {
+        is_favor
+    } else {
+        false
+    };
 
     for q in queries {
         match q {
@@ -857,8 +839,8 @@ fn apply_queries(queries: &Vec<Query>, o: &StatStatusPair) -> bool {
             Query::Unlocked => is_satisfied &= !o.paid_only,
             Query::Done => is_satisfied &= o.status.is_some(),
             Query::NotDone => is_satisfied &= o.status.is_none(),
-            Query::Starred => is_satisfied &= o.is_favor,
-            Query::Unstarred => is_satisfied &= !o.is_favor,
+            Query::Starred => is_satisfied &= is_favorite,
+            Query::Unstarred => is_satisfied &= !is_favorite,
         }
     }
 
