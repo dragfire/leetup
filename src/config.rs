@@ -1,8 +1,9 @@
 use crate::{LeetUpError, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 type LangInjectCode = HashMap<String, InjectCode>;
@@ -99,11 +100,21 @@ pub struct InjectCode {
 
 #[test]
 fn test_config() {
-    let mut data_dir = std::path::PathBuf::new();
-    data_dir.push(dirs::home_dir().expect("Home directory not available!"));
-    data_dir.push(".leetup");
-    data_dir.push("config.json");
-    let config: Config = Config::get(data_dir).unwrap();
+    let data_dir = tempfile::tempdir().unwrap();
+    let data = json!({
+        "inject_code": {},
+        "urls": {
+            "base": vec![""]
+        }
+    });
+    let file_path = data_dir.path().join("config.json");
+
+    let mut file = std::fs::File::create(&file_path).unwrap();
+    file.write(data.to_string().as_bytes()).unwrap();
+
+    let config: Config = Config::get(&file_path).unwrap();
     assert!(config.inject_code.is_some());
     assert!(config.urls.base.len() > 0);
+    drop(file);
+    data_dir.close().unwrap();
 }
