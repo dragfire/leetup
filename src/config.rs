@@ -1,23 +1,22 @@
 use crate::{LeetUpError, Result};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
 type LangInjectCode = HashMap<String, InjectCode>;
+type PickHookConfig = HashMap<String, PickHook>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Config {
+    #[serde(skip)]
     pub urls: Urls,
     pub inject_code: Option<LangInjectCode>,
+    pub pick_hook: Option<PickHookConfig>,
 }
 
 impl Config {
-    fn new(urls: Urls, inject_code: Option<LangInjectCode>) -> Self {
-        Config { urls, inject_code }
-    }
-
     pub fn get<P: AsRef<Path>>(path: P) -> Result<Self> {
         let base = "https://leetcode.com";
         let urls = Urls {
@@ -36,14 +35,13 @@ impl Config {
             verify: format!("{}/submissions/detail/$id/check/", base),
         };
 
-        let mut inject_code: Option<LangInjectCode> = None;
-        let config: Result<serde_json::Value> = Config::get_config(path);
-        if let Ok(config) = config {
-            inject_code =
-                serde_json::from_value::<LangInjectCode>(config["inject_code"].clone()).ok();
+        let mut config: Result<Config> = Config::get_config(path);
+
+        if let Ok(ref mut config) = config {
+            config.urls = urls;
         }
 
-        Ok(Config::new(urls, inject_code))
+        config
     }
 
     fn get_config<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T> {
@@ -55,7 +53,7 @@ impl Config {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Either {
     Sequence(Vec<String>),
@@ -71,7 +69,7 @@ impl ToString for Either {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct Urls {
     pub base: String,
     pub api: String,
@@ -88,12 +86,43 @@ pub struct Urls {
     pub verify: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct InjectCode {
     pub before_code: Option<Either>,
     pub before_code_exclude: Option<Either>,
     pub after_code: Option<Either>,
     pub before_function_definition: Option<Either>,
+}
+
+/// Make code generation more flexible with capabilities to run scripts before
+/// and after generation.
+///
+/// Provide the ability to change filenames through certain pre-defined transformation actions.
+#[derive(Debug, Deserialize)]
+pub struct PickHook {
+    working_dir: String,
+    script: Option<PickHookScript>,
+    transform: Option<PickHookTransform>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PickHookScript {
+    pre_generation: Option<Either>,
+    post_generation: Option<Either>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PickHookTransform {
+    filename: String,
+    action: PickHookTransformAction,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PickHookTransformAction {
+    Rename,
+    RenameCamelCase,
+    CamelCase,
 }
 
 #[test]
@@ -105,7 +134,8 @@ fn test_config() {
         "inject_code": {},
         "urls": {
             "base": vec![""]
-        }
+        },
+        "pick_hook": {}
     });
     let file_path = data_dir.path().join("config.json");
 
@@ -115,6 +145,7 @@ fn test_config() {
     let config: Config = Config::get(&file_path).unwrap();
     assert!(config.inject_code.is_some());
     assert!(config.urls.base.len() > 0);
+    assert!(config.pick_hook.is_some());
     drop(file);
     data_dir.close().unwrap();
 }
