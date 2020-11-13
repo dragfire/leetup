@@ -100,9 +100,33 @@ pub struct InjectCode {
 /// Provide the ability to change filenames through certain pre-defined transformation actions.
 #[derive(Debug, Deserialize)]
 pub struct PickHook {
-    working_dir: String,
+    working_dir: Option<String>,
     script: Option<PickHookScript>,
     transform: Option<PickHookTransform>,
+}
+
+impl PickHook {
+    pub fn working_dir(&self) -> Option<&str> {
+        self.working_dir.as_ref().map(String::as_ref)
+    }
+
+    pub fn script_pre_generation(&self) -> Option<&Either> {
+        match self.script.as_ref() {
+            Some(script) => script.pre_generation.as_ref(),
+            None => None,
+        }
+    }
+
+    pub fn script_post_generation(&self) -> Option<&Either> {
+        match self.script.as_ref() {
+            Some(script) => script.post_generation.as_ref(),
+            None => None,
+        }
+    }
+
+    pub fn transform_file(&self) -> Option<&PickHookTransform> {
+        self.transform.as_ref()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,8 +137,8 @@ pub struct PickHookScript {
 
 #[derive(Debug, Deserialize)]
 pub struct PickHookTransform {
-    filename: String,
-    action: PickHookTransformAction,
+    pub filename: String,
+    pub action: PickHookTransformAction,
 }
 
 #[derive(Debug, Deserialize)]

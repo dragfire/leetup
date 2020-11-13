@@ -2,7 +2,9 @@ use crate::{
     client,
     cmd::{self, List, OrderBy, Query, User},
     icon::Icon,
-    service::{self, auth, CacheKey, Comment, CommentStyle, Problem, ServiceProvider, Session},
+    service::{
+        self, auth, CacheKey, Comment, CommentStyle, LangInfo, Problem, ServiceProvider, Session,
+    },
     template::{parse_code, InjectPosition, Pattern},
     Config, Either, LeetUpError, Result,
 };
@@ -19,9 +21,9 @@ use serde_repr::*;
 use std::cmp::{Ord, Ordering};
 use std::collections::HashMap;
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::prelude::*;
-use std::io::BufWriter;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -120,7 +122,7 @@ impl<'a> Leetcode<'a> {
 
     fn write_code_fragment(
         &self,
-        writer: &mut BufWriter<File>,
+        buf: &mut String,
         comment: &str,
         code_fragment: Option<&Either>,
         pos: InjectPosition,
@@ -131,10 +133,10 @@ impl<'a> Leetcode<'a> {
                 comment,
                 Pattern::InjectCodePosition(pos).to_string()
             );
-            writer.write(inject_code_pos_pattern.as_bytes())?;
+            buf.push_str(&inject_code_pos_pattern);
             let code_fragment = either.to_string();
-            writer.write(code_fragment.as_bytes())?;
-            writer.write(inject_code_pos_pattern.as_bytes())?;
+            buf.push_str(&code_fragment);
+            buf.push_str(&inject_code_pos_pattern);
         }
         Ok(())
     }
@@ -145,6 +147,54 @@ impl<'a> Leetcode<'a> {
             return Ok(());
         }
         if let Err(_) = self.cache.remove(CacheKey::Problems.into()) {}
+        Ok(())
+    }
+
+    fn execute_script(&self, cmd: &str, problem: &Problem, dir: &PathBuf) -> Result<()> {
+        let dir_str = dir.to_str().unwrap();
+        let cmd = cmd.replace("@leetup=working_dir", dir_str);
+        let cmd = cmd.replace("@leetup=problem", &problem.slug);
+        std::process::Command::new("sh")
+            .args(&["-c", &cmd])
+            .spawn()?;
+        Ok(())
+    }
+
+    fn pick_hook(&self, content: &str, problem: &Problem, lang: &LangInfo) -> Result<()> {
+        let cfg = self
+            .config()?
+            .pick_hook
+            .as_ref()
+            .ok_or(LeetUpError::OptNone)?;
+        let mut curr_dir = env::current_dir()?;
+        let mut filename = curr_dir.clone();
+        if let Some(hook_cfg) = cfg.get(&lang.name) {
+            if let Some(dir) = hook_cfg.working_dir() {
+                let dir = shellexpand::tilde(dir);
+                curr_dir = PathBuf::from(dir.deref());
+                fs::create_dir_all(&curr_dir)?;
+                filename = curr_dir.clone();
+            }
+            if let Some(pre) = hook_cfg.script_pre_generation() {
+                let cmd = pre.to_string();
+                self.execute_script(&cmd, problem, &curr_dir)?;
+            }
+            filename.push(&problem.slug);
+            filename.set_extension(&lang.extension);
+
+            if let Some(post) = hook_cfg.script_post_generation() {
+                let cmd = post.to_string();
+                self.execute_script(&cmd, problem, &curr_dir)?;
+            }
+        }
+        let mut file = File::create(&filename)?;
+        file.write_all(content.as_bytes())?;
+
+        println!(
+            "Generated: {}",
+            Color::Magenta(filename.to_str().unwrap()).make()
+        );
+
         Ok(())
     }
 
@@ -262,6 +312,7 @@ Expected:
             }
         }
     }
+
     fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
         let query = r#"
             query getTopicTag($slug: String!) {
@@ -277,7 +328,7 @@ Expected:
                      status
                    }
                  }
-               }
+             }
         "#;
         let body: serde_json::Value = json!({
             "operationName": "getTopicTag",
@@ -524,15 +575,15 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         filename.set_extension(&lang.extension);
 
         if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
+            let mut buf = String::new();
             let code_defs: Vec<(String, CodeDefinition)> =
                 serde_json::from_str::<Vec<CodeDefinition>>(code_defs)?
                     .into_iter()
                     .map(|def| (def.value.to_owned(), def))
                     .collect();
             let code_defs: HashMap<_, _> = code_defs.into_iter().collect();
-            let mut writer = BufWriter::new(File::create(&filename)?);
-            if let Some(definition) = definition {
-                writer.write_all(definition.as_bytes())?;
+            if let Some(ref definition) = definition {
+                buf.push_str(definition)
             }
             let pattern_code = format!("\n{} {}\n", single_comment, Pattern::Code.to_string());
             let code = &code_defs.get(&lang.name).unwrap().default_code;
@@ -545,37 +596,34 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             debug!("InjectCode: {:#?}", inject_code);
             if let Some(inject_code) = inject_code {
                 self.write_code_fragment(
-                    &mut writer,
+                    &mut buf,
                     single_comment,
                     inject_code.before_code_exclude.as_ref(),
                     InjectPosition::BeforeCodeExclude,
                 )?;
             }
-            writer.write(pattern_code.as_bytes())?;
+            buf.push_str(&pattern_code);
             if let Some(inject_code) = inject_code {
                 self.write_code_fragment(
-                    &mut writer,
+                    &mut buf,
                     single_comment,
                     inject_code.before_code.as_ref(),
                     InjectPosition::BeforeCode,
                 )?;
             }
-            writer.write(b"\n")?;
-            writer.write_all(code.as_bytes())?;
-            writer.write(pattern_code.as_bytes())?;
+            buf.push('\n');
+            buf.push_str(&code);
+            buf.push_str(&pattern_code);
             if let Some(inject_code) = inject_code {
                 self.write_code_fragment(
-                    &mut writer,
+                    &mut buf,
                     single_comment,
                     inject_code.after_code.as_ref(),
                     InjectPosition::AfterCode,
                 )?;
             }
-            writer.flush()?;
-            println!(
-                "Generated: {}",
-                Color::Magenta(filename.to_str().unwrap()).make()
-            );
+
+            self.pick_hook(&buf, &problem, &lang)?;
         }
 
         Ok(())

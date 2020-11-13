@@ -33,6 +33,7 @@ reqwest = { version = "0.10.8", features = [ "blocking", "json", "cookies"] }
 spinners = "1.2.0"
 dirs = "3.0.1"
 serde_repr = "0.1.6"
+shellexpand = "2.0.0"
 
 [dev-dependencies]
 tempfile = "3.1.0"
