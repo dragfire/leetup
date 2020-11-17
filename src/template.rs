@@ -4,6 +4,8 @@ pub enum Pattern {
     CustomCode,
     Code,
     InjectCodePosition(InjectPosition),
+    Problem, // Problem name e.g. two-sum
+    WorkingDir,
 }
 
 #[derive(Copy, Clone)]
@@ -28,6 +30,8 @@ impl From<Pattern> for String {
                     "@leetup=inject:before_function_definition".into()
                 }
             },
+            Pattern::Problem => "@leetup=problem".into(),
+            Pattern::WorkingDir => "@leetup=working_dir".into(),
         }
     }
 }

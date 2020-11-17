@@ -102,7 +102,6 @@ pub struct InjectCode {
 pub struct PickHook {
     working_dir: Option<String>,
     script: Option<PickHookScript>,
-    transform: Option<PickHookTransform>,
 }
 
 impl PickHook {
@@ -123,30 +122,12 @@ impl PickHook {
             None => None,
         }
     }
-
-    pub fn transform_file(&self) -> Option<&PickHookTransform> {
-        self.transform.as_ref()
-    }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PickHookScript {
     pre_generation: Option<Either>,
     post_generation: Option<Either>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PickHookTransform {
-    pub filename: String,
-    pub action: PickHookTransformAction,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PickHookTransformAction {
-    Rename,
-    RenameCamelCase,
-    CamelCase,
 }
 
 #[test]

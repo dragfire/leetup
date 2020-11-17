@@ -152,8 +152,8 @@ impl<'a> Leetcode<'a> {
 
     fn execute_script(&self, cmd: &str, problem: &Problem, dir: &PathBuf) -> Result<()> {
         let dir_str = dir.to_str().unwrap();
-        let cmd = cmd.replace("@leetup=working_dir", dir_str);
-        let cmd = cmd.replace("@leetup=problem", &problem.slug);
+        let cmd = cmd.replace(&Pattern::WorkingDir.to_string(), dir_str);
+        let cmd = cmd.replace(&Pattern::Problem.to_string(), &problem.slug);
         std::process::Command::new("sh")
             .args(&["-c", &cmd])
             .spawn()?;
@@ -176,24 +176,43 @@ impl<'a> Leetcode<'a> {
                 filename = curr_dir.clone();
             }
             if let Some(pre) = hook_cfg.script_pre_generation() {
+                println!(
+                    "{}",
+                    Color::Cyan("Executing pre-generation script...").make()
+                );
                 let cmd = pre.to_string();
                 self.execute_script(&cmd, problem, &curr_dir)?;
             }
             filename.push(&problem.slug);
             filename.set_extension(&lang.extension);
 
+            let mut file = File::create(&filename)?;
+            file.write_all(content.as_bytes())?;
+
             if let Some(post) = hook_cfg.script_post_generation() {
+                println!(
+                    "{}",
+                    Color::Cyan("Executing post-generation script...").make()
+                );
                 let cmd = post.to_string();
                 self.execute_script(&cmd, problem, &curr_dir)?;
             }
-        }
-        let mut file = File::create(&filename)?;
-        file.write_all(content.as_bytes())?;
 
-        println!(
-            "Generated: {}",
-            Color::Magenta(filename.to_str().unwrap()).make()
-        );
+            // This can be wrong if you used: `mkdir`, `cd`, `mv`
+            // to move around the generated file.
+            println!(
+                "Generated: {}\n{}",
+                Color::Magenta(filename.to_str().unwrap()).make(),
+                Color::Yellow("Note: File path can be wrong if you used: `mkdir`, `cd`, `mv` to move around the generated file. Find the right path used in your script!").make()
+            );
+        } else {
+            let mut file = File::create(&filename)?;
+            file.write_all(content.as_bytes())?;
+            println!(
+                "Generated: {}",
+                Color::Magenta(filename.to_str().unwrap()).make()
+            );
+        }
 
         Ok(())
     }
