@@ -21,7 +21,7 @@ mod tests {
         assert!(true);
     }
 
-    fn get_id(problem: &str) -> usize {
+    fn _get_id(problem: &str) -> usize {
         println!("{}", problem);
         let start_index = problem.find(" [").unwrap();
         let end_index = problem.find(']').unwrap();
@@ -30,8 +30,7 @@ mod tests {
         id.parse().unwrap()
     }
 
-    #[test]
-    fn list_problems() {
+    fn _list_problems() {
         let bytes: Vec<u8> = Command::cargo_bin("leetup")
             .unwrap()
             .args(&["list", "-oi"])
@@ -50,8 +49,8 @@ mod tests {
         // Test OrderBy works by check first and last id
         //
         // NOTE: For some reason, result.last() is empty!
-        assert_eq!(1, get_id(result.get(0).as_ref().unwrap()));
-        assert_eq!(n, get_id(result.get(n - 1).as_ref().unwrap()));
+        assert_eq!(1, _get_id(result.get(0).as_ref().unwrap()));
+        assert_eq!(n, _get_id(result.get(n - 1).as_ref().unwrap()));
     }
 
     #[test]
