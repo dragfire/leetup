@@ -63,7 +63,7 @@ impl<'a> Leetcode<'a> {
                 Some(serde_json::from_str::<Session>(val).expect("Session format not correct"));
         }
         data_dir.push("config.json");
-        let config = Config::get(data_dir).expect("Need to get config");
+        let config = Config::get(data_dir);
 
         Leetcode {
             session,
@@ -156,64 +156,73 @@ impl<'a> Leetcode<'a> {
         let cmd = cmd.replace(&Pattern::Problem.to_string(), &problem.slug);
         std::process::Command::new("sh")
             .args(&["-c", &cmd])
-            .spawn()?;
+            .spawn()?
+            .wait()?;
         Ok(())
     }
 
     fn pick_hook(&self, content: &str, problem: &Problem, lang: &LangInfo) -> Result<()> {
-        let cfg = self
-            .config()?
-            .pick_hook
-            .as_ref()
-            .ok_or(LeetUpError::OptNone)?;
         let mut curr_dir = env::current_dir()?;
         let mut filename = curr_dir.clone();
-        if let Some(hook_cfg) = cfg.get(&lang.name) {
-            if let Some(dir) = hook_cfg.working_dir() {
-                let dir = shellexpand::tilde(dir);
-                curr_dir = PathBuf::from(dir.deref());
-                fs::create_dir_all(&curr_dir)?;
-                filename = curr_dir.clone();
-            }
-            if let Some(pre) = hook_cfg.script_pre_generation() {
+        let cfg = self.config()?;
+        if let Some(ref cfg) = cfg.pick_hook {
+            if let Some(hook_cfg) = cfg.get(&lang.name) {
+                if let Some(dir) = hook_cfg.working_dir() {
+                    let dir = shellexpand::tilde(dir);
+                    curr_dir = PathBuf::from(dir.deref());
+                    fs::create_dir_all(&curr_dir)?;
+                    filename = curr_dir.clone();
+                }
+                if let Some(pre) = hook_cfg.script_pre_generation() {
+                    println!(
+                        "{}",
+                        Color::Cyan("Executing pre-generation script...").make()
+                    );
+                    let cmd = pre.to_string();
+                    self.execute_script(&cmd, problem, &curr_dir)?;
+                }
+                self.write_content(&mut filename, problem, lang, content.as_bytes())?;
+
+                if let Some(post) = hook_cfg.script_post_generation() {
+                    println!(
+                        "{}",
+                        Color::Cyan("Executing post-generation script...").make()
+                    );
+                    let cmd = post.to_string();
+                    self.execute_script(&cmd, problem, &curr_dir)?;
+                }
+
+                // File path can be wrong if you used: `mkdir`, `cd`, `mv` to move
+                // around the generated file. Find the right path used in your script!
                 println!(
-                    "{}",
-                    Color::Cyan("Executing pre-generation script...").make()
-                );
-                let cmd = pre.to_string();
-                self.execute_script(&cmd, problem, &curr_dir)?;
-            }
-            filename.push(&problem.slug);
-            filename.set_extension(&lang.extension);
-
-            let mut file = File::create(&filename)?;
-            file.write_all(content.as_bytes())?;
-
-            if let Some(post) = hook_cfg.script_post_generation() {
-                println!(
-                    "{}",
-                    Color::Cyan("Executing post-generation script...").make()
-                );
-                let cmd = post.to_string();
-                self.execute_script(&cmd, problem, &curr_dir)?;
-            }
-
-            // This can be wrong if you used: `mkdir`, `cd`, `mv`
-            // to move around the generated file.
-            println!(
                 "Generated: {}\n{}",
                 Color::Magenta(filename.to_str().unwrap()).make(),
                 Color::Yellow("Note: File path can be wrong if you used: `mkdir`, `cd`, `mv` to move around the generated file. Find the right path used in your script!").make()
             );
+            }
         } else {
-            let mut file = File::create(&filename)?;
-            file.write_all(content.as_bytes())?;
+            self.write_content(&mut filename, problem, lang, content.as_bytes())?;
             println!(
                 "Generated: {}",
                 Color::Magenta(filename.to_str().unwrap()).make()
             );
         }
 
+        Ok(())
+    }
+
+    fn write_content(
+        &self,
+        filename: &mut PathBuf,
+        problem: &Problem,
+        lang: &LangInfo,
+        content: &[u8],
+    ) -> Result<()> {
+        filename.push(&problem.slug);
+        filename.set_extension(&lang.extension);
+
+        let mut file = File::create(&filename)?;
+        file.write_all(content)?;
         Ok(())
     }
 

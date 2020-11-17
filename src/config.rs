@@ -17,7 +17,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn get<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn get<P: AsRef<Path>>(path: P) -> Self {
         let base = "https://leetcode.com";
         let urls = Urls {
             base: base.to_owned(),
@@ -38,8 +38,14 @@ impl Config {
         let mut config: Result<Config> = Config::get_config(path);
 
         if let Ok(ref mut config) = config {
-            config.urls = urls;
+            config.urls = urls.clone();
         }
+
+        let config = config.unwrap_or(Config {
+            urls,
+            inject_code: None,
+            pick_hook: None,
+        });
 
         config
     }
@@ -69,7 +75,7 @@ impl ToString for Either {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct Urls {
     pub base: String,
     pub api: String,
@@ -147,7 +153,7 @@ fn test_config() {
     let mut file = std::fs::File::create(&file_path).unwrap();
     file.write(data.to_string().as_bytes()).unwrap();
 
-    let config: Config = Config::get(&file_path).unwrap();
+    let config: Config = Config::get(&file_path);
     assert!(config.inject_code.is_some());
     assert!(config.urls.base.len() > 0);
     assert!(config.pick_hook.is_some());
