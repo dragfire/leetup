@@ -120,7 +120,30 @@ Others are ignored!
 ## Hook up script for Pick:
 Run scripts before/after code generation. It's useful when you want more ergonomics to move 
 around the generated file e.g. create a directory, move the generated file to the directory, rename, etc.
+`@leetup=working_dir` will be replaced by `working_dir` in config.  
+`@leetup=problem` will be replaced by the current problem tile e.g. `two-sum`.
 ```json
+{
+    "inject_code": {
+        ...SNIP...
+    },
+    "pick_hook": {
+        "rust": {
+            "working_dir": "~/lc/rust",
+            "script": {
+                "pre_generation": ["cd @leetup=working_dir; mkdir -p @leetup=problem"],
+                "post_generation": ["mv @leetup=working_dir/@leetup=problem.rs @leetup=working_dir/@leetup=problem/Solution.rs"]
+            }
+        },
+        "java": {
+            "working_dir": "~/lc/java",
+            "script": {
+                "pre_generation": ["cd @leetup=working_dir", "mvn archetype:generate -DartifactId=@leetup=problem  -DgroupId=leetup  -DarchetypeGroupId=org.apache.maven.archetypes -DarchetypeArtifactId=maven-archetype-quickstart -DarchetypeVersion=1.4 -DinteractiveMode=false"], 
+                "post_generation": ["mv @leetup=working_dir/@leetup=problem.java @leetup=working_dir/@leetup=problem/src/main/java/App.java"]
+            }
+        }
+    }
+}
 ```
 
 ### Credit:
