@@ -1,24 +1,23 @@
 use crate::{LeetUpError, Result};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
 type LangInjectCode = HashMap<String, InjectCode>;
+type PickHookConfig = HashMap<String, PickHook>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Config {
+    #[serde(skip)]
     pub urls: Urls,
     pub inject_code: Option<LangInjectCode>,
+    pub pick_hook: Option<PickHookConfig>,
 }
 
 impl Config {
-    fn new(urls: Urls, inject_code: Option<LangInjectCode>) -> Self {
-        Config { urls, inject_code }
-    }
-
-    pub fn get<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn get<P: AsRef<Path>>(path: P) -> Self {
         let base = "https://leetcode.com";
         let urls = Urls {
             base: base.to_owned(),
@@ -36,14 +35,19 @@ impl Config {
             verify: format!("{}/submissions/detail/$id/check/", base),
         };
 
-        let mut inject_code: Option<LangInjectCode> = None;
-        let config: Result<serde_json::Value> = Config::get_config(path);
-        if let Ok(config) = config {
-            inject_code =
-                serde_json::from_value::<LangInjectCode>(config["inject_code"].clone()).ok();
+        let mut config: Result<Config> = Config::get_config(path);
+
+        if let Ok(ref mut config) = config {
+            config.urls = urls.clone();
         }
 
-        Ok(Config::new(urls, inject_code))
+        let config = config.unwrap_or(Config {
+            urls,
+            inject_code: None,
+            pick_hook: None,
+        });
+
+        config
     }
 
     fn get_config<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T> {
@@ -55,7 +59,7 @@ impl Config {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Either {
     Sequence(Vec<String>),
@@ -71,7 +75,7 @@ impl ToString for Either {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct Urls {
     pub base: String,
     pub api: String,
@@ -88,12 +92,48 @@ pub struct Urls {
     pub verify: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct InjectCode {
     pub before_code: Option<Either>,
     pub before_code_exclude: Option<Either>,
     pub after_code: Option<Either>,
     pub before_function_definition: Option<Either>,
+}
+
+/// Make code generation more flexible with capabilities to run scripts before
+/// and after generation.
+///
+/// Provide the ability to change filenames through certain pre-defined transformation actions.
+#[derive(Debug, Deserialize)]
+pub struct PickHook {
+    working_dir: Option<String>,
+    script: Option<PickHookScript>,
+}
+
+impl PickHook {
+    pub fn working_dir(&self) -> Option<&str> {
+        self.working_dir.as_ref().map(String::as_ref)
+    }
+
+    pub fn script_pre_generation(&self) -> Option<&Either> {
+        match self.script.as_ref() {
+            Some(script) => script.pre_generation.as_ref(),
+            None => None,
+        }
+    }
+
+    pub fn script_post_generation(&self) -> Option<&Either> {
+        match self.script.as_ref() {
+            Some(script) => script.post_generation.as_ref(),
+            None => None,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PickHookScript {
+    pre_generation: Option<Either>,
+    post_generation: Option<Either>,
 }
 
 #[test]
@@ -105,16 +145,18 @@ fn test_config() {
         "inject_code": {},
         "urls": {
             "base": vec![""]
-        }
+        },
+        "pick_hook": {}
     });
     let file_path = data_dir.path().join("config.json");
 
     let mut file = std::fs::File::create(&file_path).unwrap();
     file.write(data.to_string().as_bytes()).unwrap();
 
-    let config: Config = Config::get(&file_path).unwrap();
+    let config: Config = Config::get(&file_path);
     assert!(config.inject_code.is_some());
     assert!(config.urls.base.len() > 0);
+    assert!(config.pick_hook.is_some());
     drop(file);
     data_dir.close().unwrap();
 }

@@ -117,5 +117,11 @@ impl Solution {
 ```
 Others are ignored!
 
+## Hook up script for Pick:
+Run scripts before/after code generation. It's useful when you want more ergonomics to move 
+around the generated file e.g. create a directory, move the generated file to the directory, rename, etc.
+```json
+```
+
 ### Credit:
 This project is inspired by: https://github.com/leetcode-tools/leetcode-cli
