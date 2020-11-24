@@ -199,14 +199,14 @@ impl<'a> Leetcode<'a> {
                 Color::Magenta(filename.to_str().unwrap()).make(),
                 Color::Yellow("Note: File path can be wrong if you used: `mkdir`, `cd`, `mv` to move around the generated file. Find the right path used in your script!").make()
             );
+                return Ok(());
             }
-        } else {
-            self.write_content(&mut filename, problem, lang, content.as_bytes())?;
-            println!(
-                "Generated: {}",
-                Color::Magenta(filename.to_str().unwrap()).make()
-            );
         }
+        self.write_content(&mut filename, problem, lang, content.as_bytes())?;
+        println!(
+            "Generated: {}",
+            Color::Magenta(filename.to_str().unwrap()).make()
+        );
 
         Ok(())
     }
