@@ -1,4 +1,3 @@
-// TODO refactor this file
 use crate::{
     cmd::{self, User},
     Config, Result,
