@@ -1,12 +1,14 @@
-// TODO refactor this file
 use crate::{
-    cmd::{self, User},
-    Config, Result,
+    cmd::{self, Query, User},
+    icon::Icon,
+    Config, LeetUpError, Result,
 };
+use ansi_term::Colour::{Green, Red, Yellow};
 use cookie::Cookie;
 use leetup_cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use serde_repr::*;
+use std::cmp::Ordering;
 use std::str::FromStr;
 
 /// ServiceProvider trait provides all the functionalities required to solve problems
@@ -22,10 +24,74 @@ pub trait ServiceProvider<'a> {
     fn process_auth(&mut self, user: User) -> Result<()>;
     fn cache(&mut self) -> Result<&KvStore>;
     fn name(&self) -> &'a str;
-}
 
-pub struct ListProblemsOptions {
-    pub question_ids: Option<HashSet<String>>,
+    /// Print list of problems properly.
+    fn pretty_list<T: Iterator<Item = &'a Box<dyn ProblemInfo + 'static>>>(probs: T) {
+        for prob in probs {
+            let is_favorite = if let Some(is_favor) = prob.is_favorite() {
+                is_favor
+            } else {
+                false
+            };
+            let starred_icon = if is_favorite {
+                Yellow.paint(Icon::Star.to_string()).to_string()
+            } else {
+                Icon::Empty.to_string()
+            };
+
+            let locked_icon = if prob.is_paid_only() {
+                Red.paint(Icon::Lock.to_string()).to_string()
+            } else {
+                Icon::Empty.to_string()
+            };
+
+            let acd = if prob.status().is_some() {
+                Green.paint(Icon::Yes.to_string()).to_string()
+            } else {
+                Icon::Empty.to_string()
+            };
+
+            println!(
+                "{} {:2} {} [{:^4}] {:75} {:6}",
+                starred_icon,
+                locked_icon,
+                acd,
+                prob.question_id(),
+                prob.question_title(),
+                prob.difficulty().to_string()
+            );
+        }
+    }
+
+    /// Filter problems using multiple queries.
+    fn apply_queries(queries: &Vec<Query>, o: &Box<dyn ProblemInfo>) -> bool {
+        let mut is_satisfied = true;
+        let difficulty: DifficultyType = o.difficulty().into();
+        let is_favorite = if let Some(is_favor) = o.is_favorite() {
+            is_favor
+        } else {
+            false
+        };
+
+        for q in queries {
+            match q {
+                Query::Easy => is_satisfied &= difficulty == Easy,
+                Query::NotEasy => is_satisfied &= difficulty != Easy,
+                Query::Medium => is_satisfied &= difficulty == Medium,
+                Query::NotMedium => is_satisfied &= difficulty != Medium,
+                Query::Hard => is_satisfied &= difficulty == Hard,
+                Query::NotHard => is_satisfied &= difficulty != Hard,
+                Query::Locked => is_satisfied &= o.is_paid_only(),
+                Query::Unlocked => is_satisfied &= !o.is_paid_only(),
+                Query::Done => is_satisfied &= o.status().is_some(),
+                Query::NotDone => is_satisfied &= o.status().is_none(),
+                Query::Starred => is_satisfied &= is_favorite,
+                Query::Unstarred => is_satisfied &= !is_favorite,
+            }
+        }
+
+        is_satisfied
+    }
 }
 
 #[derive(Debug)]
@@ -35,6 +101,98 @@ pub struct Problem {
     pub lang: String,
     pub link: String,
     pub typed_code: Option<String>,
+}
+
+pub trait ProblemInfo {
+    fn question_id(&self) -> usize;
+    fn question_title(&self) -> &str;
+    fn difficulty(&self) -> &Difficulty;
+    fn is_favorite(&self) -> Option<bool>;
+    fn is_paid_only(&self) -> bool;
+    fn status(&self) -> Option<&str>;
+}
+
+impl PartialEq for dyn ProblemInfo + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.question_id().eq(&other.question_id())
+    }
+}
+
+impl Eq for dyn ProblemInfo + '_ {}
+
+impl PartialOrd for dyn ProblemInfo + '_ {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for dyn ProblemInfo + '_ {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.question_id().cmp(&other.question_id())
+    }
+}
+
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Serialize_repr, Deserialize_repr, Debug)]
+#[repr(u8)]
+pub enum DifficultyType {
+    Easy = 1,
+    Medium,
+    Hard,
+}
+
+use DifficultyType::*;
+
+impl FromStr for DifficultyType {
+    type Err = LeetUpError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let easy = Easy.to_string();
+        let medium = Medium.to_string();
+        let hard = Hard.to_string();
+        match s {
+            x if x == easy => Ok(Easy),
+            x if x == medium => Ok(Medium),
+            x if x == hard => Ok(Hard),
+            _ => Err(LeetUpError::UnexpectedCommand),
+        }
+    }
+}
+
+impl ToString for DifficultyType {
+    fn to_string(&self) -> String {
+        match self {
+            Easy => "Easy".into(),
+            Medium => "Medium".into(),
+            Hard => "Hard".into(),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum Difficulty {
+    Cardinal { level: DifficultyType },
+    String(String),
+}
+
+impl<'a> From<&'_ Difficulty> for DifficultyType {
+    fn from(difficulty: &Difficulty) -> Self {
+        match difficulty {
+            Difficulty::Cardinal { level } => level.clone(),
+            Difficulty::String(s) => DifficultyType::from_str(s).unwrap(),
+        }
+    }
+}
+
+impl ToString for Difficulty {
+    fn to_string(&self) -> String {
+        let level: DifficultyType = self.into();
+        match level {
+            Easy => Green.paint(Easy.to_string()).to_string(),
+            Medium => Yellow.paint(Medium.to_string()).to_string(),
+            Hard => Red.paint(Hard.to_string()).to_string(),
+        }
+    }
 }
 
 pub enum CacheKey<'a> {
