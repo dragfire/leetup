@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{self, Query, User},
+    cmd::{self, OrderBy, Query, User},
     icon::Icon,
     Config, LeetUpError, Result,
 };
@@ -91,6 +91,33 @@ pub trait ServiceProvider<'a> {
         }
 
         is_satisfied
+    }
+
+    /// Order problems by Id, Title, Difficulty in Ascending or Descending order
+    fn with_ordering(
+        orders: &[OrderBy],
+        a: &Box<dyn ProblemInfo>,
+        b: &Box<dyn ProblemInfo>,
+    ) -> Ordering {
+        let mut ordering = Ordering::Equal;
+        let id_ordering = a.question_id().cmp(&b.question_id());
+        let title_ordering = a.question_title().cmp(&b.question_title());
+        let a_difficulty_level: DifficultyType = a.difficulty().into();
+        let b_difficulty_level: DifficultyType = b.difficulty().into();
+        let diff_ordering = a_difficulty_level.cmp(&b_difficulty_level);
+
+        for order in orders {
+            match order {
+                OrderBy::IdAsc => ordering = ordering.then(id_ordering),
+                OrderBy::IdDesc => ordering = ordering.then(id_ordering.reverse()),
+                OrderBy::TitleAsc => ordering = ordering.then(title_ordering),
+                OrderBy::TitleDesc => ordering = ordering.then(title_ordering.reverse()),
+                OrderBy::DifficultyAsc => ordering = ordering.then(diff_ordering),
+                OrderBy::DifficultyDesc => ordering = ordering.then(diff_ordering.reverse()),
+            }
+        }
+
+        ordering
     }
 }
 

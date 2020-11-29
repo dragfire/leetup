@@ -3,8 +3,8 @@ use crate::{
     cmd::{self, List, OrderBy, Query, User},
     icon::Icon,
     service::{
-        self, auth, CacheKey, Comment, CommentStyle, Difficulty, DifficultyType, LangInfo, Problem,
-        ProblemInfo, ServiceProvider, Session,
+        self, auth, CacheKey, Comment, CommentStyle, Difficulty, LangInfo, Problem, ProblemInfo,
+        ServiceProvider, Session,
     },
     template::{parse_code, InjectPosition, Pattern},
     Config, Either, LeetUpError, Result,
@@ -17,7 +17,7 @@ use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::Deserialize;
 use serde_json::json;
-use std::cmp::{Ord, Ordering};
+use std::cmp::Ord;
 use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File};
@@ -421,30 +421,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         if let Some(ref order) = list.order {
             let orders = OrderBy::from_str(order);
-
-            probs.sort_by(|a, b| {
-                let mut ordering = Ordering::Equal;
-                let id_ordering = a.question_id().cmp(&b.question_id());
-                let title_ordering = a.question_title().cmp(&b.question_title());
-                let a_difficulty_level: DifficultyType = a.difficulty().into();
-                let b_difficulty_level: DifficultyType = b.difficulty().into();
-                let diff_ordering = a_difficulty_level.cmp(&b_difficulty_level);
-
-                for order in &orders {
-                    match order {
-                        OrderBy::IdAsc => ordering = ordering.then(id_ordering),
-                        OrderBy::IdDesc => ordering = ordering.then(id_ordering.reverse()),
-                        OrderBy::TitleAsc => ordering = ordering.then(title_ordering),
-                        OrderBy::TitleDesc => ordering = ordering.then(title_ordering.reverse()),
-                        OrderBy::DifficultyAsc => ordering = ordering.then(diff_ordering),
-                        OrderBy::DifficultyDesc => {
-                            ordering = ordering.then(diff_ordering.reverse())
-                        }
-                    }
-                }
-
-                ordering
-            });
+            probs.sort_by(|a, b| Leetcode::with_ordering(orders.as_slice(), a, b));
         } else {
             probs.sort_by(Ord::cmp);
         }
