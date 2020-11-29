@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package raftpb;
+
+// RequestVote RPC arguments structure.
+message RequestVoteArgs {
+    // Your data here (2A, 2B).
+    uint64 term = 1;
+    uint64 candidate_id = 2;
+    uint64 last_log_index = 3;
+    uint64 last_log_term = 4;
+}
+
+// RequestVote RPC reply structure.
+message RequestVoteReply {
+    // Your data here (2A).
+    uint64 term = 1;
+    bool vote_granted = 2;
+}
+
+message AppendEntriesArgs {
+    uint64 term = 1;
+    uint64 leader_id = 2;
+    uint64 prev_log_index = 3;
+    uint64 prev_log_term = 4;
+    uint64 leader_commit = 5;
+}
+
+message AppendEntriesReply {
+    uint64 term = 1;
+    bool success = 2;
+}
