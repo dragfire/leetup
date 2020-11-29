@@ -3,12 +3,12 @@ use crate::{
     cmd::{self, List, OrderBy, Query, User},
     icon::Icon,
     service::{
-        self, auth, CacheKey, Comment, CommentStyle, LangInfo, Problem, ServiceProvider, Session,
+        self, auth, CacheKey, Comment, CommentStyle, Difficulty, DifficultyType, LangInfo, Problem,
+        ProblemInfo, ServiceProvider, Session,
     },
     template::{parse_code, InjectPosition, Pattern},
     Config, Either, LeetUpError, Result,
 };
-use ansi_term::Colour::{Green, Red, Yellow};
 use anyhow::anyhow;
 use colci::Color;
 use html2text::from_read;
@@ -17,7 +17,6 @@ use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::Deserialize;
 use serde_json::json;
-use serde_repr::*;
 use std::cmp::{Ord, Ordering};
 use std::collections::HashMap;
 use std::env;
@@ -464,7 +463,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                     has_keyword
                 } else {
                     let queries: Vec<Query> = Query::from_str(list.query.as_ref().unwrap());
-                    has_keyword && apply_queries(&queries, o)
+                    has_keyword && Leetcode::apply_queries(&queries, o)
                 }
             };
 
@@ -474,9 +473,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                     filtered_problems.push(prob);
                 }
             }
-            pretty_list(filtered_problems.iter());
+            Leetcode::pretty_list(filtered_problems.iter());
         } else {
-            pretty_list(probs.iter());
+            Leetcode::pretty_list(probs.iter());
         }
 
         Ok(())
@@ -754,68 +753,6 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 }
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Serialize_repr, Deserialize_repr, Debug)]
-#[repr(u8)]
-pub enum DifficultyType {
-    Easy = 1,
-    Medium,
-    Hard,
-}
-use DifficultyType::*;
-
-impl FromStr for DifficultyType {
-    type Err = LeetUpError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let easy = Easy.to_string();
-        let medium = Medium.to_string();
-        let hard = Hard.to_string();
-        match s {
-            x if x == easy => Ok(Easy),
-            x if x == medium => Ok(Medium),
-            x if x == hard => Ok(Hard),
-            _ => Err(LeetUpError::UnexpectedCommand),
-        }
-    }
-}
-
-impl ToString for DifficultyType {
-    fn to_string(&self) -> String {
-        match self {
-            Easy => "Easy".into(),
-            Medium => "Medium".into(),
-            Hard => "Hard".into(),
-        }
-    }
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-pub enum Difficulty {
-    Cardinal { level: DifficultyType },
-    String(String),
-}
-
-impl<'a> From<&'_ Difficulty> for DifficultyType {
-    fn from(difficulty: &Difficulty) -> Self {
-        match difficulty {
-            Difficulty::Cardinal { level } => level.clone(),
-            Difficulty::String(s) => DifficultyType::from_str(s).unwrap(),
-        }
-    }
-}
-
-impl ToString for Difficulty {
-    fn to_string(&self) -> String {
-        let level: DifficultyType = self.into();
-        match level {
-            Easy => Green.paint(Easy.to_string()).to_string(),
-            Medium => Yellow.paint(Medium.to_string()).to_string(),
-            Hard => Red.paint(Hard.to_string()).to_string(),
-        }
-    }
-}
-
 #[derive(Deserialize, Debug)]
 pub struct Stat {
     pub question_id: usize,
@@ -921,20 +858,6 @@ struct SubmissionResult {
     pub total_testcases: Option<u32>,
 }
 
-trait ProblemInfo {
-    fn question_id(&self) -> usize;
-
-    fn question_title(&self) -> &str;
-
-    fn difficulty(&self) -> &Difficulty;
-
-    fn is_favorite(&self) -> Option<bool>;
-
-    fn is_paid_only(&self) -> bool;
-
-    fn status(&self) -> Option<&str>;
-}
-
 impl ProblemInfo for StatStatusPair {
     fn question_title(&self) -> &str {
         self.stat.question_title.as_str()
@@ -985,90 +908,4 @@ impl ProblemInfo for TopicTagQuestion {
     fn status(&self) -> Option<&str> {
         self.status.as_ref().map(String::as_ref)
     }
-}
-
-impl PartialEq for dyn ProblemInfo + '_ {
-    fn eq(&self, other: &Self) -> bool {
-        self.question_id().eq(&other.question_id())
-    }
-}
-
-impl Eq for dyn ProblemInfo + '_ {}
-
-impl PartialOrd for dyn ProblemInfo + '_ {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for dyn ProblemInfo + '_ {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.question_id().cmp(&other.question_id())
-    }
-}
-
-fn pretty_list<'a, T: Iterator<Item = &'a Box<dyn ProblemInfo + 'static>>>(probs: T) {
-    for prob in probs {
-        let is_favorite = if let Some(is_favor) = prob.is_favorite() {
-            is_favor
-        } else {
-            false
-        };
-        let starred_icon = if is_favorite {
-            Yellow.paint(Icon::Star.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        let locked_icon = if prob.is_paid_only() {
-            Red.paint(Icon::Lock.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        let acd = if prob.status().is_some() {
-            Green.paint(Icon::Yes.to_string()).to_string()
-        } else {
-            Icon::Empty.to_string()
-        };
-
-        println!(
-            "{} {:2} {} [{:^4}] {:75} {:6}",
-            starred_icon,
-            locked_icon,
-            acd,
-            prob.question_id(),
-            prob.question_title(),
-            prob.difficulty().to_string()
-        );
-    }
-}
-
-fn apply_queries(queries: &Vec<Query>, o: &Box<dyn ProblemInfo>) -> bool {
-    let mut is_satisfied = true;
-    let difficulty: DifficultyType = o.difficulty().into();
-    let is_favorite = if let Some(is_favor) = o.is_favorite() {
-        is_favor
-    } else {
-        false
-    };
-
-    for q in queries {
-        match q {
-            Query::Easy => is_satisfied &= difficulty == Easy,
-            Query::NotEasy => is_satisfied &= difficulty != Easy,
-            Query::Medium => is_satisfied &= difficulty == Medium,
-            Query::NotMedium => is_satisfied &= difficulty != Medium,
-            Query::Hard => is_satisfied &= difficulty == Hard,
-            Query::NotHard => is_satisfied &= difficulty != Hard,
-            Query::Locked => is_satisfied &= o.is_paid_only(),
-            Query::Unlocked => is_satisfied &= !o.is_paid_only(),
-            Query::Done => is_satisfied &= o.status().is_some(),
-            Query::NotDone => is_satisfied &= o.status().is_none(),
-            Query::Starred => is_satisfied &= is_favorite,
-            Query::Unstarred => is_satisfied &= !is_favorite,
-        }
-    }
-
-    is_satisfied
 }
