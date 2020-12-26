@@ -152,18 +152,6 @@ impl Raft {
         server: usize,
         args: RequestVoteArgs,
     ) -> Receiver<Result<RequestVoteReply>> {
-        // Your code here if you want the rpc becomes async.
-        // Example:
-        // ```
-        // let peer = &self.peers[server];
-        // let peer_clone = peer.clone();
-        // let (tx, rx) = channel();
-        // peer.spawn(async move {
-        //     let res = peer_clone.request_vote(&args).await.map_err(Error::Rpc);
-        //     tx.send(res);
-        // });
-        // rx
-        // ```
         let peer = &self.peers[server];
         let peer_clone = peer.clone();
         let (tx, rx) = sync_channel::<Result<RequestVoteReply>>(1);
