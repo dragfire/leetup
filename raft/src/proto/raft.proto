@@ -10,7 +10,6 @@ message RequestVoteArgs {
     uint64 last_log_index = 3;
     uint64 last_log_term = 4;
 }
-
 // RequestVote RPC reply structure.
 message RequestVoteReply {
     // Your data here (2A).
