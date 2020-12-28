@@ -264,14 +264,16 @@ impl Node {
                     Err(e) => match e {
                         mpsc::TryRecvError::Disconnected => panic!(e),
                         mpsc::TryRecvError::Empty => {
-                            let mut all_replies: Vec<RequestVoteReply> = vec![];
+                            let mut vote_count = 0;
+                            let n = raft.peers.len();
+                            let state = Arc::get_mut(&mut raft.state).unwrap();
                             // Did not receive a RequestVote even after timeouts.
                             // Become candidate, send out request_vote to other peers.
-                            for i in 0..raft.peers.len() {
-                                let state = Arc::get_mut(&mut raft.state).unwrap();
-                                state.term += 1;
+                            let mut rs = state.clone();
+                            for i in 0..n {
+                                rs.term += 1;
                                 let args = RequestVoteArgs {
-                                    term: state.term,
+                                    term: rs.term,
                                     candidate_id: raft.me as u64,
                                     last_log_term: 0,
                                     last_log_index: 0,
@@ -286,7 +288,8 @@ impl Node {
                                                 // if reply.term > state.current_term {
                                                 //     state.current_term = reply.term;
                                                 // }
-                                                all_replies.push(reply);
+                                                vote_count +=
+                                                    if reply.vote_granted { 1 } else { 0 };
                                             }
                                             Err(e) => error!("{:#?}", e),
                                         },
@@ -294,6 +297,7 @@ impl Node {
                                     }
                                 }
                             }
+                            rs.is_leader = vote_count > (n / 2 + n % 2);
                         }
                     },
                 }
