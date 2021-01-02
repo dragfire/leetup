@@ -120,6 +120,7 @@ pub enum Query {
     NotDone,
     Starred,
     Unstarred,
+    Article, // Filter by Problems with Editorial Solution.
 }
 
 impl From<char> for Query {

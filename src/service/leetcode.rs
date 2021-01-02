@@ -859,6 +859,10 @@ impl ProblemInfo for StatStatusPair {
     fn status(&self) -> Option<&str> {
         self.status.as_ref().map(String::as_ref)
     }
+
+    fn has_article(&self) -> bool {
+        self.stat.question_article_live.unwrap_or(false)
+    }
 }
 
 impl ProblemInfo for TopicTagQuestion {
@@ -884,5 +888,10 @@ impl ProblemInfo for TopicTagQuestion {
 
     fn status(&self) -> Option<&str> {
         self.status.as_ref().map(String::as_ref)
+    }
+
+    fn has_article(&self) -> bool {
+        // Topic Tags don't have this attribute, just return false.
+        false
     }
 }

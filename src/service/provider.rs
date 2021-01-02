@@ -87,6 +87,7 @@ pub trait ServiceProvider<'a> {
                 Query::NotDone => is_satisfied &= o.status().is_none(),
                 Query::Starred => is_satisfied &= is_favorite,
                 Query::Unstarred => is_satisfied &= !is_favorite,
+                Query::Article => is_satisfied &= o.has_article(),
             }
         }
 
@@ -137,6 +138,7 @@ pub trait ProblemInfo {
     fn is_favorite(&self) -> Option<bool>;
     fn is_paid_only(&self) -> bool;
     fn status(&self) -> Option<&str>;
+    fn has_article(&self) -> bool;
 }
 
 impl PartialEq for dyn ProblemInfo + '_ {
