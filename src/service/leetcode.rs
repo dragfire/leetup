@@ -762,8 +762,8 @@ pub struct StatStatusPair {
     pub difficulty: Difficulty,
     pub paid_only: bool,
     pub is_favor: bool,
-    pub frequency: isize,
-    pub progress: isize,
+    pub frequency: f64,
+    pub progress: f64,
 }
 
 #[derive(Deserialize, Debug)]
