@@ -3,12 +3,7 @@ use crate::{
     LeetUpError, Result,
 };
 use anyhow::anyhow;
-use reqwest::{
-    blocking::{Client, Response},
-    header,
-    header::HeaderMap,
-    header::HeaderValue,
-};
+use reqwest::{header, header::HeaderMap, header::HeaderValue, Client, Response};
 
 fn headers_with_session(headers_opt: Option<HeaderMap>, session: Option<&Session>) -> HeaderMap {
     let mut headers = HeaderMap::new();
@@ -30,18 +25,18 @@ fn headers_with_session(headers_opt: Option<HeaderMap>, session: Option<&Session
 }
 
 /// Make a GET request
-pub fn get(
+pub async fn get(
     url: &str,
     headers_opt: Option<HeaderMap>,
     session: Option<&Session>,
 ) -> Result<Response> {
     let headers = headers_with_session(headers_opt, session);
     let client = Client::builder().default_headers(headers).build()?;
-    client.get(url).send().map_err(LeetUpError::Reqwest)
+    client.get(url).send().await.map_err(LeetUpError::Reqwest)
 }
 
 /// Make a POST request
-pub fn post<'a, P: ServiceProvider<'a>, T: serde::Serialize + ?Sized, F>(
+pub async fn post<'a, P: ServiceProvider<'a>, T: serde::Serialize + ?Sized, F>(
     provider: &P,
     url: &str,
     body: &T,
@@ -62,10 +57,12 @@ where
         )
         .json(body);
 
-    let res = client.send()?;
+    let res = client.send().await?;
 
     if res.status() == 200 {
-        res.json::<serde_json::value::Value>().map_err(|e| e.into())
+        res.json::<serde_json::value::Value>()
+            .await
+            .map_err(|e| e.into())
     } else {
         log::error!("{:#?}", res);
         Err(LeetUpError::Any(anyhow!(format!(

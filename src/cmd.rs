@@ -187,29 +187,29 @@ pub struct LeetUpArgs {
     pub command: Command,
 }
 
-pub fn process() -> Result<()> {
+pub async fn process() -> Result<()> {
     let opt = LeetUpArgs::from_args();
     debug!("Options: {:#?}", opt);
     let mut provider = Leetcode::new();
 
     match opt.command {
         Command::Pick(pick) => {
-            provider.pick_problem(pick)?;
+            provider.pick_problem(pick).await?;
         }
         Command::List(list) => {
-            provider.list_problems(list)?;
+            provider.list_problems(list).await?;
         }
         Command::User(user) => {
-            provider.process_auth(user)?;
+            provider.process_auth(user).await?;
         }
         Command::Submit(submit) => {
             let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
-            provider.problem_submit(submit)?;
+            provider.problem_submit(submit).await?;
             sp.stop();
         }
         Command::Test(test) => {
             let sp = Spinner::new(Spinners::Dots9, "Waiting for judge result!".into());
-            provider.problem_test(test)?;
+            provider.problem_test(test).await?;
             sp.stop();
         }
     }

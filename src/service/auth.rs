@@ -5,7 +5,7 @@ use crate::{
 use colci::Color;
 use log::{debug, error, info};
 use regex::Regex;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use spinners::{Spinner, Spinners};
 use std::io::{BufWriter, Write};
 use std::str::FromStr;
@@ -47,7 +47,7 @@ fn capture_value(i: usize, re: Regex, text: &str) -> Result<String> {
         .ok_or(LeetUpError::OptNone)
 }
 
-pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session> {
+pub async fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session> {
     let client_err = LeetUpError::Any(anyhow::anyhow!("Something went wrong!"));
     let config = provider.config()?;
     let client = Client::builder()
@@ -55,12 +55,12 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         .referer(true)
         .redirect(reqwest::redirect::Policy::none()) // disable it: CookieStore does not play well with redirects.
         .build()?;
-    let res = client.get(&config.urls.github_login_request).send()?;
+    let res = client.get(&config.urls.github_login_request).send().await?;
     if res.status() != 200 {
         error!("Status: {}", res.status());
         return Err(client_err);
     }
-    let text = &res.text()?;
+    let text = &res.text().await?;
 
     let ga_id_re = Regex::new("name=\"ga_id\" value=\"(.*?)\"").unwrap();
     let ga_id = capture_value(1, ga_id_re, text).unwrap_or("".to_string());
@@ -92,18 +92,19 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
     let mut res = client
         .post(&config.urls.github_session_request)
         .form(form)
-        .send()?;
+        .send()
+        .await?;
 
     info!("Status: {}", res.status());
     if res.status() == 302 {
         info!("Redirecting to: {}", res.url().as_str());
-        client.get(res.url().as_str()).send()?;
+        client.get(res.url().as_str()).send().await?;
     } else {
         return Err(client_err);
     }
     debug!("Headers: {:#?}", res.headers());
 
-    res = client.get(&config.urls.github_login).send()?;
+    res = client.get(&config.urls.github_login).send().await?;
     let mut session: Session = Default::default();
     if res.status() == 302 {
         // Due to some limitations with `reqwest`, I had to manually handle
@@ -113,14 +114,14 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
         // Eventhough it supports CookieStore, it's not quite flexible to make
         // it work the way I want it to be for LeetUp.
         info!("Redirecting to: {}", res.url().as_str());
-        res = client.get(res.url().as_str()).send()?;
+        res = client.get(res.url().as_str()).send().await?;
         info!("Status: {}", res.status());
         if !is_ok_or_redirect(res.status()) {
             return Err(client_err);
         }
         let location = res.headers().get("location").unwrap().to_str().unwrap();
         info!("Redirecting to: {}", location);
-        res = client.get(location).send()?;
+        res = client.get(location).send().await?;
         info!("Status: {}", res.status());
         if !is_ok_or_redirect(res.status()) {
             return Err(client_err);
@@ -128,7 +129,7 @@ pub fn github_login<'a, P: ServiceProvider<'a>>(provider: &P) -> Result<Session>
 
         let location = res.headers().get("location").unwrap().to_str().unwrap();
         info!("Redirecting to: {}", location);
-        res = client.get(location).send()?;
+        res = client.get(location).send().await?;
         info!("Status: {}", res.status());
         if !is_ok_or_redirect(res.status()) {
             return Err(client_err);

@@ -1,6 +1,8 @@
-use leetup::cmd;
+use leetup::{cmd, Result};
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<()> {
     env_logger::init();
-    cmd::process().unwrap();
+    cmd::process().await?;
+    Ok(())
 }
