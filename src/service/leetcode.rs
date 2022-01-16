@@ -10,6 +10,7 @@ use crate::{
     Config, Either, LeetUpError, Result,
 };
 use anyhow::anyhow;
+use async_trait::async_trait;
 use colci::Color;
 use html2text::from_read;
 use leetup_cache::kvstore::KvStore;
@@ -84,15 +85,15 @@ impl<'a> Leetcode<'a> {
         Ok(())
     }
 
-    pub fn fetch_problems(&mut self) -> Result<Vec<StatStatusPair>> {
-        let problems = self.fetch_all_problems()?;
+    pub async fn fetch_problems(&mut self) -> Result<Vec<StatStatusPair>> {
+        let problems = self.fetch_all_problems().await?;
         let problems: Vec<StatStatusPair> =
             serde_json::from_value(problems["stat_status_pairs"].clone())?;
 
         Ok(problems)
     }
 
-    fn run_code(
+    async fn run_code(
         &self,
         url: &str,
         problem: &Problem,
@@ -107,11 +108,15 @@ impl<'a> Leetcode<'a> {
             );
             Some(headers)
         })
+        .await
     }
 
-    fn verify_run_code(&self, url: &str) -> Result<serde_json::Value> {
+    async fn verify_run_code(&self, url: &str) -> Result<serde_json::Value> {
         loop {
-            let response = client::get(url, None, self.session())?.json::<serde_json::Value>()?;
+            let response = client::get(url, None, self.session())
+                .await?
+                .json::<serde_json::Value>()
+                .await?;
             if response["state"] == "SUCCESS" {
                 return Ok(response);
             }
@@ -340,7 +345,7 @@ Expected:
         }
     }
 
-    fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
+    async fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
         let query = r#"
             query getTopicTag($slug: String!) {
                  topicTag(slug: $slug) {
@@ -365,10 +370,11 @@ Expected:
             "query": query
         });
 
-        client::post(self, &self.config.urls.graphql, &body, || None)
+        client::post(self, &self.config.urls.graphql, &body, || None).await
     }
 }
 
+#[async_trait]
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn session(&self) -> Option<&Session> {
         self.session.as_ref()
@@ -381,7 +387,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     /// Fetch all problems
     ///
     /// Use cache wherever necessary
-    fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
+    async fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
         let problems_res: serde_json::value::Value;
         if let Some(ref val) = self.cache.get(CacheKey::Problems.into())? {
             debug!("Fetching problems from cache...");
@@ -389,8 +395,10 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         } else {
             let url = &self.config.urls.problems_all;
             let session = self.session();
-            problems_res = client::get(url, None, session)?
+            problems_res = client::get(url, None, session)
+                .await?
                 .json::<serde_json::value::Value>()
+                .await
                 .map_err(LeetUpError::Reqwest)?;
             let res_serialized = serde_json::to_string(&problems_res)?;
             self.cache.set(CacheKey::Problems.into(), res_serialized)?;
@@ -399,13 +407,14 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(problems_res)
     }
 
-    fn list_problems(&mut self, list: List) -> Result<()> {
-        let problems_res = self.fetch_all_problems()?;
-        let mut probs: Vec<Box<dyn ProblemInfo>> = vec![];
+    async fn list_problems(&mut self, list: List) -> Result<()> {
+        let problems_res = self.fetch_all_problems().await?;
+        let mut probs: Vec<Box<dyn ProblemInfo + Send>> = vec![];
 
         if let Some(ref tag) = list.tag {
-            let tag_questions =
-                self.get_problems_with_topic_tag(tag)?["data"]["topicTag"]["questions"].clone();
+            let tag_questions = self.get_problems_with_topic_tag(tag).await?["data"]["topicTag"]
+                ["questions"]
+                .clone();
             let problems: Vec<TopicTagQuestion> = serde_json::from_value(tag_questions)?;
             for prob in problems {
                 probs.push(Box::new(prob));
@@ -427,7 +436,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         }
 
         if list.query.is_some() || list.keyword.is_some() {
-            let filter_predicate = |o: &Box<dyn ProblemInfo>| {
+            let filter_predicate = |o: &Box<dyn ProblemInfo + Send>| {
                 let default_keyword = String::from("");
                 let keyword = list
                     .keyword
@@ -444,7 +453,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 }
             };
 
-            let mut filtered_problems: Vec<Box<dyn ProblemInfo>> = vec![];
+            let mut filtered_problems: Vec<Box<dyn ProblemInfo + Send>> = vec![];
             for prob in probs {
                 if filter_predicate(&prob) {
                     filtered_problems.push(prob);
@@ -458,8 +467,8 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()> {
-        let probs = self.fetch_problems()?;
+    async fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()> {
+        let probs = self.fetch_problems().await?;
         let urls = &self.config.urls;
         let mut single_comment = "";
         let lang = pick.lang.info();
@@ -523,7 +532,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "operationName": "getQuestionDetail"
         });
 
-        let response = client::post(self, &urls.graphql, &body, || None)?;
+        let response = client::post(self, &urls.graphql, &body, || None).await?;
         debug!("Response: {:#?}", response);
 
         let mut definition = None;
@@ -633,7 +642,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         Ok(())
     }
 
-    fn problem_test(&self, test: cmd::Test) -> Result<()> {
+    async fn problem_test(&self, test: cmd::Test) -> Result<()> {
         let problem = service::extract_problem(test.filename)?;
         let test_data = test.test_data.replace("\\n", "\n");
         let body = json!({
@@ -645,19 +654,19 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 "judge_type":  "large"
         });
         let url = &self.config()?.urls.test;
-        let response = self.run_code(url, &problem, body)?;
+        let response = self.run_code(url, &problem, body).await?;
         let url = self
             .config
             .urls
             .verify
             .replace("$id", &response["interpret_id"].as_str().unwrap());
-        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
+        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
         self.print_judge_result(Some(test_data), result);
 
         Ok(())
     }
 
-    fn problem_submit(&self, submit: cmd::Submit) -> Result<()> {
+    async fn problem_submit(&self, submit: cmd::Submit) -> Result<()> {
         let problem = service::extract_problem(submit.filename)?;
         let body = json!({
             "lang":        problem.lang.to_owned(),
@@ -667,19 +676,19 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "judge_type": "large",
         });
         let url = &self.config()?.urls.submit;
-        let response = self.run_code(url, &problem, body)?;
+        let response = self.run_code(url, &problem, body).await?;
         let url = self
             .config
             .urls
             .verify
             .replace("$id", &response["submission_id"].to_string());
-        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url)?)?;
+        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
         self.print_judge_result(None, result);
 
         Ok(())
     }
 
-    fn process_auth(&mut self, user: User) -> Result<()> {
+    async fn process_auth(&mut self, user: User) -> Result<()> {
         // cookie login
         if let Some(val) = user.cookie {
             let mut cookie = String::new();
@@ -702,7 +711,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         // github login
         if let Some(_) = user.github {
-            match auth::github_login(self) {
+            match auth::github_login(self).await {
                 Ok(session) => {
                     println!("\n{}", Color::Green("User logged in!").make());
                     self.cache_session(session)?;

@@ -4,6 +4,7 @@ use crate::{
     Config, LeetUpError, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
+use async_trait::async_trait;
 use cookie::Cookie;
 use leetup_cache::kvstore::KvStore;
 use serde::{Deserialize, Serialize};
@@ -13,20 +14,21 @@ use std::str::FromStr;
 
 /// ServiceProvider trait provides all the functionalities required to solve problems
 /// on any type of Online Judge through leetup CLI.
+#[async_trait]
 pub trait ServiceProvider<'a> {
     fn session(&self) -> Option<&Session>;
     fn config(&self) -> Result<&Config>;
-    fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value>;
-    fn list_problems(&mut self, list: cmd::List) -> Result<()>;
-    fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()>;
-    fn problem_test(&self, test: cmd::Test) -> Result<()>;
-    fn problem_submit(&self, submit: cmd::Submit) -> Result<()>;
-    fn process_auth(&mut self, user: User) -> Result<()>;
+    async fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value>;
+    async fn list_problems(&mut self, list: cmd::List) -> Result<()>;
+    async fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()>;
+    async fn problem_test(&self, test: cmd::Test) -> Result<()>;
+    async fn problem_submit(&self, submit: cmd::Submit) -> Result<()>;
+    async fn process_auth(&mut self, user: User) -> Result<()>;
     fn cache(&mut self) -> Result<&KvStore>;
     fn name(&self) -> &'a str;
 
     /// Print list of problems properly.
-    fn pretty_list<T: Iterator<Item = &'a Box<dyn ProblemInfo + 'static>>>(probs: T) {
+    fn pretty_list<T: Iterator<Item = &'a Box<dyn ProblemInfo + Send>>>(probs: T) {
         for prob in probs {
             let is_favorite = if let Some(is_favor) = prob.is_favorite() {
                 is_favor
@@ -64,7 +66,7 @@ pub trait ServiceProvider<'a> {
     }
 
     /// Filter problems using multiple queries.
-    fn apply_queries(queries: &Vec<Query>, o: &Box<dyn ProblemInfo>) -> bool {
+    fn apply_queries(queries: &Vec<Query>, o: &Box<dyn ProblemInfo + Send>) -> bool {
         let mut is_satisfied = true;
         let difficulty: DifficultyType = o.difficulty().into();
         let is_favorite = if let Some(is_favor) = o.is_favorite() {
@@ -96,8 +98,8 @@ pub trait ServiceProvider<'a> {
     /// Order problems by Id, Title, Difficulty in Ascending or Descending order
     fn with_ordering(
         orders: &[OrderBy],
-        a: &Box<dyn ProblemInfo>,
-        b: &Box<dyn ProblemInfo>,
+        a: &Box<dyn ProblemInfo + Send>,
+        b: &Box<dyn ProblemInfo + Send>,
     ) -> Ordering {
         let mut ordering = Ordering::Equal;
         let id_ordering = a.question_id().cmp(&b.question_id());
@@ -139,21 +141,41 @@ pub trait ProblemInfo {
     fn status(&self) -> Option<&str>;
 }
 
-impl PartialEq for dyn ProblemInfo + '_ {
+impl PartialEq for dyn ProblemInfo + '_ + Send {
     fn eq(&self, other: &Self) -> bool {
         self.question_id().eq(&other.question_id())
     }
 }
 
-impl Eq for dyn ProblemInfo + '_ {}
+impl Eq for dyn ProblemInfo + '_ + Send {}
 
-impl PartialOrd for dyn ProblemInfo + '_ {
+impl PartialOrd for dyn ProblemInfo + '_ + Send {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for dyn ProblemInfo + '_ {
+impl Ord for dyn ProblemInfo + '_ + Send {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.question_id().cmp(&other.question_id())
+    }
+}
+
+impl PartialEq for dyn ProblemInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.question_id().eq(&other.question_id())
+    }
+}
+
+impl Eq for dyn ProblemInfo {}
+
+impl PartialOrd for dyn ProblemInfo {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for dyn ProblemInfo {
     fn cmp(&self, other: &Self) -> Ordering {
         self.question_id().cmp(&other.question_id())
     }
