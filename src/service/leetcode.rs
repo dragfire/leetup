@@ -648,13 +648,14 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let body = json!({
                 "lang":        problem.lang.to_owned(),
                 "question_id": problem.id,
-                "test_mode":   true,
                 "typed_code":  parse_code(problem.typed_code.as_ref().unwrap()),
                 "data_input":  test_data,
                 "judge_type":  "large"
         });
         let url = &self.config()?.urls.test;
+        debug!("problem_test url: {}, {:?}", url, body);
         let response = self.run_code(url, &problem, body).await?;
+        debug!("problem_test response: {:?}", response);
         let url = self
             .config
             .urls
