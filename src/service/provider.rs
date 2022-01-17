@@ -28,7 +28,7 @@ pub trait ServiceProvider<'a> {
     fn name(&self) -> &'a str;
 
     /// Print list of problems properly.
-    fn pretty_list<T: Iterator<Item = &'a Box<dyn ProblemInfo + Send>>>(probs: T) {
+    fn pretty_list<T: IntoIterator<Item = &'a Box<dyn ProblemInfo + Send>>>(probs: T) {
         for prob in probs {
             let is_favorite = if let Some(is_favor) = prob.is_favorite() {
                 is_favor
