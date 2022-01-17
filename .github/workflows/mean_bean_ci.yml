@@ -1,6 +1,6 @@
 name: Mean Bean CI
 
-on: [push, pull_request]
+on: [push]
 
 jobs:
   # This job downloads and stores `cross` as an artifact, so that it can be
@@ -49,16 +49,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        channel: [stable, beta, nightly]
+        channel: [stable]
         target:
           # MSVC
           - i686-pc-windows-msvc
           - x86_64-pc-windows-msvc
-          # GNU: You typically only need to test Windows GNU if you're
-          # specifically targetting it, and it can cause issues with some
-          # dependencies if you're not so it's disabled by self.
-          # - i686-pc-windows-gnu
-          # - x86_64-pc-windows-gnu
 
   macos:
     runs-on: macos-latest
@@ -84,13 +79,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        channel: [stable, beta, nightly]
+        channel: [stable]
         target:
           # macOS
           - x86_64-apple-darwin
-          # iOS
-          - aarch64-apple-ios
-          - x86_64-apple-ios
+          - aarch64-apple-darwin
 
   linux:
     runs-on: ubuntu-latest
@@ -122,58 +115,9 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        channel: [stable, beta, nightly]
+        channel: [stable]
         target:
-          # WASM, off by default as most rust projects aren't compatible yet.
-          # - wasm32-unknown-emscripten
           # Linux
           - aarch64-unknown-linux-gnu
-          - aarch64-unknown-linux-musl
-          - arm-unknown-linux-gnueabi
-          - arm-unknown-linux-gnueabihf
-          - arm-unknown-linux-musleabi
-          - arm-unknown-linux-musleabihf
-          - armv5te-unknown-linux-musleabi
-          - armv7-unknown-linux-gnueabihf
-          - armv7-unknown-linux-musleabihf
-          - i586-unknown-linux-gnu
-          - i586-unknown-linux-musl
-          - i686-unknown-linux-gnu
-          - i686-unknown-linux-musl
-          - mips-unknown-linux-gnu
-          - mips-unknown-linux-musl
-          - mips64-unknown-linux-gnuabi64
-          - mips64el-unknown-linux-gnuabi64
-          - mipsel-unknown-linux-gnu
-          - mipsel-unknown-linux-musl
-          - powerpc-unknown-linux-gnu
-          - powerpc64-unknown-linux-gnu
-          - powerpc64le-unknown-linux-gnu
-          - s390x-unknown-linux-gnu
           - x86_64-unknown-linux-gnu
           - x86_64-unknown-linux-musl
-          - sparc64-unknown-linux-gnu
-          # Android
-          - aarch64-linux-android
-          - arm-linux-androideabi
-          - armv7-linux-androideabi
-          - i686-linux-android
-          - x86_64-linux-android
-          # *BSD
-          # The FreeBSD targets can have issues linking so they are disabled
-          # by default.
-          # - i686-unknown-freebsd
-          # - x86_64-unknown-freebsd
-          - x86_64-unknown-netbsd
-          # DragonFly (Doesn't currently work)
-          # - x86_64-unknown-dragonfly
-          # Solaris
-          - sparcv9-sun-solaris
-          - x86_64-sun-solaris
-          # Bare Metal
-          # These are no-std embedded targets, so they will only build if your
-          # crate is `no_std` compatible.
-          # - thumbv6m-none-eabi
-          # - thumbv7em-none-eabi
-          # - thumbv7em-none-eabihf
-          # - thumbv7m-none-eabi
