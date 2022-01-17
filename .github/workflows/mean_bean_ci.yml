@@ -1,6 +1,6 @@
 name: Mean Bean CI
 
-on: [push, pull_request]
+on: [push]
 
 jobs:
   # This job downloads and stores `cross` as an artifact, so that it can be
@@ -49,16 +49,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        channel: [stable, beta, nightly]
+        channel: [stable]
         target:
           # MSVC
           - i686-pc-windows-msvc
           - x86_64-pc-windows-msvc
-          # GNU: You typically only need to test Windows GNU if you're
-          # specifically targetting it, and it can cause issues with some
-          # dependencies if you're not so it's disabled by self.
-          # - i686-pc-windows-gnu
-          # - x86_64-pc-windows-gnu
 
   macos:
     runs-on: macos-latest
@@ -84,7 +79,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        channel: [stable, beta, nightly]
+        channel: [stable]
         target:
           # macOS
           - x86_64-apple-darwin
@@ -120,7 +115,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        channel: [stable, beta, nightly]
+        channel: [stable]
         target:
           # Linux
           - aarch64-unknown-linux-gnu
