@@ -45,32 +45,35 @@ pub struct Leetcode<'a> {
 }
 
 impl<'a> Leetcode<'a> {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let name = "leetcode";
 
         // create .leetup directory: ~/.leetup/*.log
         let mut data_dir = PathBuf::new();
-        data_dir.push(dirs::home_dir().expect("Home directory not available!"));
+        data_dir.push(
+            dirs::home_dir()
+                .ok_or_else(|| "Home directory not available!")
+                .map_err(anyhow::Error::msg)?,
+        );
         data_dir.push(".leetup");
 
-        let mut cache = KvStore::open(&data_dir).unwrap();
+        let mut cache = KvStore::open(&data_dir)?;
         let mut session: Option<Session> = None;
-        let session_val = cache.get(CacheKey::Session.into()).unwrap();
+        let session_val = cache.get(CacheKey::Session.into())?;
 
         // Set session if the user is logged in
         if let Some(ref val) = session_val {
-            session =
-                Some(serde_json::from_str::<Session>(val).expect("Session format not correct"));
+            session = Some(serde_json::from_str::<Session>(val)?);
         }
         data_dir.push("config.json");
         let config = Config::get(data_dir);
 
-        Leetcode {
+        Ok(Leetcode {
             session,
             config,
             cache,
             name,
-        }
+        })
     }
 
     fn cache_session(&mut self, session: Session) -> Result<()> {
@@ -104,7 +107,7 @@ impl<'a> Leetcode<'a> {
             let mut headers = HeaderMap::new();
             headers.insert(
                 header::REFERER,
-                HeaderValue::from_str(&problem.link).unwrap(),
+                HeaderValue::from_str(&problem.link).expect("Link is required!"),
             );
             Some(headers)
         })
@@ -230,7 +233,12 @@ impl<'a> Leetcode<'a> {
         Ok(())
     }
 
-    fn print_judge_result(&self, test_data: Option<String>, result: SubmissionResult) {
+    fn print_judge_result(
+        &self,
+        test_data: Option<String>,
+        result: SubmissionResult,
+    ) -> Result<()> {
+        debug!("judge result: {:?}", result);
         match result.status_code {
             10 => {
                 // Accepted
@@ -254,35 +262,41 @@ Expected:
                             Icon::Yes.to_string(),
                             result.status_msg,
                             test_data.unwrap(),
-                            result.code_answer.unwrap().to_string(),
-                            result.expected_code_answer.unwrap().to_string(),
+                            result
+                                .code_answer
+                                .expect("Code answer required!")
+                                .to_string(),
+                            result
+                                .expected_code_answer
+                                .expect("Expected code answer required!")
+                                .to_string(),
                         ))
                         .make()
                     );
-                    return;
-                }
-                println!(
-                    "{}",
-                    Color::Green(&format!(
-                        r#"
+                } else {
+                    println!(
+                        "{}",
+                        Color::Green(&format!(
+                            r#"
  {} {}
  {}/{} cases passed ({})
  Your runtime beats {}% of {} submissions
  Your memory usage beats {}% of {} submissions ({})
                     "#,
-                        Icon::Yes.to_string(),
-                        result.status_msg,
-                        result.total_correct.unwrap(),
-                        result.total_testcases.unwrap(),
-                        result.status_runtime,
-                        result.runtime_percentile.unwrap(),
-                        result.lang,
-                        result.memory_percentile.unwrap(),
-                        result.lang,
-                        result.status_memory
-                    ))
-                    .make()
-                );
+                            Icon::Yes.to_string(),
+                            result.status_msg,
+                            result.total_correct.unwrap_or(0),
+                            result.total_testcases.unwrap_or(0),
+                            result.status_runtime,
+                            result.runtime_percentile.unwrap_or(0.0),
+                            result.lang,
+                            result.memory_percentile.unwrap_or(0.0),
+                            result.lang,
+                            result.status_memory
+                        ))
+                        .make()
+                    );
+                }
             }
             15 => {
                 // Runtime error
@@ -302,9 +316,15 @@ Expected:
                     "#,
                         Icon::_No.to_string(),
                         result.status_msg,
-                        test_data.unwrap(),
-                        result.code_output.unwrap().to_string(),
-                        result.code_answer.unwrap().to_string(),
+                        test_data.unwrap_or("".to_string()),
+                        result
+                            .code_output
+                            .unwrap_or(Either::String("".to_string()))
+                            .to_string(),
+                        result
+                            .code_answer
+                            .unwrap_or(Either::String("".to_string()))
+                            .to_string()
                     ))
                     .make()
                 );
@@ -317,7 +337,10 @@ Expected:
                         "\n {} {}\n {}",
                         Icon::_No.to_string(),
                         result.status_msg,
-                        result.full_compile_error.unwrap(),
+                        result
+                            .full_compile_error
+                            .ok_or_else(|| "Failed to get compilation error!")
+                            .map_err(anyhow::Error::msg)?
                     ))
                     .make()
                 );
@@ -334,15 +357,18 @@ Expected:
                     "#,
                         Icon::_No.to_string(),
                         result.status_msg,
-                        result.total_correct.unwrap(),
-                        result.total_testcases.unwrap(),
+                        result.total_correct.unwrap_or(0),
+                        result.total_testcases.unwrap_or(0),
                         result.status_runtime,
-                        result.code_output.unwrap(),
+                        result
+                            .code_output
+                            .unwrap_or(Either::String("[Empty]".to_string()))
                     ))
                     .make()
                 );
             }
         }
+        Ok(())
     }
 
     async fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
@@ -373,6 +399,7 @@ Expected:
         client::post(self, &self.config.urls.graphql, &body, || None).await
     }
 }
+type ProblemInfoSeq = Vec<Box<dyn ProblemInfo + Send + 'static>>;
 
 #[async_trait]
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
@@ -409,7 +436,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     async fn list_problems(&mut self, list: List) -> Result<()> {
         let problems_res = self.fetch_all_problems().await?;
-        let mut probs: Vec<Box<dyn ProblemInfo + Send>> = vec![];
+        let mut probs: ProblemInfoSeq = vec![];
 
         if let Some(ref tag) = list.tag {
             let tag_questions = self.get_problems_with_topic_tag(tag).await?["data"]["topicTag"]
@@ -445,21 +472,21 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                     .to_ascii_lowercase();
                 let has_keyword = o.question_title().to_lowercase().contains(&keyword);
 
-                if list.query.is_none() {
-                    has_keyword
-                } else {
-                    let queries: Vec<Query> = Query::from_str(list.query.as_ref().unwrap());
-                    has_keyword && Leetcode::apply_queries(&queries, o)
-                }
+                return list
+                    .query
+                    .as_ref()
+                    .map(|query| Query::from_str(query))
+                    .map(|queries| Leetcode::apply_queries(&queries, o))
+                    .map(|result| has_keyword && result)
+                    .unwrap_or(has_keyword);
             };
 
-            let mut filtered_problems: Vec<Box<dyn ProblemInfo + Send>> = vec![];
-            for prob in probs {
-                if filter_predicate(&prob) {
-                    filtered_problems.push(prob);
-                }
-            }
-            Leetcode::pretty_list(filtered_problems.iter());
+            Leetcode::pretty_list(
+                &probs
+                    .into_iter()
+                    .filter(filter_predicate)
+                    .collect::<Vec<Box<dyn ProblemInfo + Send + 'static>>>(),
+            );
         } else {
             Leetcode::pretty_list(probs.iter());
         }
@@ -470,30 +497,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     async fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()> {
         let probs = self.fetch_problems().await?;
         let urls = &self.config.urls;
-        let mut single_comment = "";
         let lang = pick.lang.info();
-
-        // TODO should have Single and Multiline comment available?
-        let comment = match &lang.comment {
-            Comment::C(single, multi) => {
-                if let CommentStyle::Single(s) = single {
-                    single_comment = s;
-                }
-                if multi.is_some() {
-                    multi.as_ref().unwrap()
-                } else {
-                    single
-                }
-            }
-            Comment::Python3(single, _) => single,
-            Comment::MySQL(single, _) => single,
-        };
-
-        if let CommentStyle::Single(s) = comment {
-            single_comment = s;
-        }
-
-        info!("Comment: {:#?}", comment);
 
         let problem: Problem = probs
             .iter()
@@ -539,9 +543,19 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let mut start_comment = "";
         let line_comment;
         let mut end_comment = "";
-        match comment {
+        let mut single_comment = "";
+
+        // TODO should have Single and Multiline comment available?
+        let comment_style: &CommentStyle = match &lang.comment {
+            Comment::C(single, multi) => multi.as_ref().unwrap_or(single),
+            Comment::Python3(single, _) => single,
+            Comment::MySQL(single, _) => single,
+        };
+
+        match comment_style {
             CommentStyle::Single(s) => {
                 line_comment = s;
+                single_comment = s;
             }
             CommentStyle::Multiline {
                 start,
@@ -656,15 +670,14 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         debug!("problem_test url: {}, {:?}", url, body);
         let response = self.run_code(url, &problem, body).await?;
         debug!("problem_test response: {:?}", response);
-        let url = self
-            .config
-            .urls
-            .verify
-            .replace("$id", &response["interpret_id"].as_str().unwrap());
+        let url = self.config.urls.verify.replace(
+            "$id",
+            &response["interpret_id"]
+                .as_str()
+                .ok_or_else(|| LeetUpError::Any(anyhow!("Unable to replace `interpret_id`")))?,
+        );
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
-        self.print_judge_result(Some(test_data), result);
-
-        Ok(())
+        self.print_judge_result(Some(test_data), result)
     }
 
     async fn problem_submit(&self, submit: cmd::Submit) -> Result<()> {
@@ -684,24 +697,20 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .verify
             .replace("$id", &response["submission_id"].to_string());
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
-        self.print_judge_result(None, result);
-
-        Ok(())
+        self.print_judge_result(None, result)
     }
 
     async fn process_auth(&mut self, user: User) -> Result<()> {
         // cookie login
         if let Some(val) = user.cookie {
-            let mut cookie = String::new();
-
-            if let Some(val) = val {
-                cookie = val;
-            } else {
+            let cookie = val.unwrap_or_else(|| {
+                let mut cookie_value = String::new();
                 println!("Enter Cookie:");
-                let stdin = std::io::stdin();
-                stdin.read_line(&mut cookie)?;
-                cookie = format!(r#"{}"#, cookie.trim_end());
-            }
+                std::io::stdin()
+                    .read_line(&mut cookie_value)
+                    .expect("Failed to read cookie from input");
+                format!(r#"{}"#, cookie_value.trim_end())
+            });
 
             // filter out all unnecessary cookies
             let session = Session::from_str(&cookie)

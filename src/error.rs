@@ -20,6 +20,9 @@ pub enum LeetUpError {
     /// Reqwest Error
     Reqwest(#[from] reqwest::Error),
 
+    /// Invalid header value error
+    InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
+
     /// Option None Error
     #[error("Tried to unwrap None")]
     OptNone,

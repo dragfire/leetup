@@ -190,7 +190,8 @@ pub struct LeetUpArgs {
 pub async fn process() -> Result<()> {
     let opt = LeetUpArgs::from_args();
     debug!("Options: {:#?}", opt);
-    let mut provider = Leetcode::new();
+
+    let mut provider = Leetcode::new()?;
 
     match opt.command {
         Command::Pick(pick) => {
