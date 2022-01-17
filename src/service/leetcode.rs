@@ -238,6 +238,7 @@ impl<'a> Leetcode<'a> {
         test_data: Option<String>,
         result: SubmissionResult,
     ) -> Result<()> {
+        debug!("judge result: {:?}", result);
         match result.status_code {
             10 => {
                 // Accepted
@@ -272,31 +273,30 @@ Expected:
                         ))
                         .make()
                     );
-
-                    ()
-                }
-                println!(
-                    "{}",
-                    Color::Green(&format!(
-                        r#"
+                } else {
+                    println!(
+                        "{}",
+                        Color::Green(&format!(
+                            r#"
  {} {}
  {}/{} cases passed ({})
  Your runtime beats {}% of {} submissions
  Your memory usage beats {}% of {} submissions ({})
                     "#,
-                        Icon::Yes.to_string(),
-                        result.status_msg,
-                        result.total_correct.unwrap_or(0),
-                        result.total_testcases.unwrap_or(0),
-                        result.status_runtime,
-                        result.runtime_percentile.unwrap_or(0.0),
-                        result.lang,
-                        result.memory_percentile.unwrap_or(0.0),
-                        result.lang,
-                        result.status_memory
-                    ))
-                    .make()
-                );
+                            Icon::Yes.to_string(),
+                            result.status_msg,
+                            result.total_correct.unwrap_or(0),
+                            result.total_testcases.unwrap_or(0),
+                            result.status_runtime,
+                            result.runtime_percentile.unwrap_or(0.0),
+                            result.lang,
+                            result.memory_percentile.unwrap_or(0.0),
+                            result.lang,
+                            result.status_memory
+                        ))
+                        .make()
+                    );
+                }
             }
             15 => {
                 // Runtime error
@@ -399,6 +399,7 @@ Expected:
         client::post(self, &self.config.urls.graphql, &body, || None).await
     }
 }
+type ProblemInfoSeq = Vec<Box<dyn ProblemInfo + Send + 'static>>;
 
 #[async_trait]
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
@@ -435,7 +436,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     async fn list_problems(&mut self, list: List) -> Result<()> {
         let problems_res = self.fetch_all_problems().await?;
-        let mut probs: Vec<Box<dyn ProblemInfo + Send + 'static>> = vec![];
+        let mut probs: ProblemInfoSeq = vec![];
 
         if let Some(ref tag) = list.tag {
             let tag_questions = self.get_problems_with_topic_tag(tag).await?["data"]["topicTag"]
