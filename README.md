@@ -10,9 +10,8 @@
 
 ## Install
 - MacOs/Linux:
-```sh
-curl -LSfs https://japaric.github.io/trust/install.sh | sh -s -- --git dragfire/leetup
-```
+Download from ![releases](https://github.com/dragfire/leetup/releases). Extract the zipped file and set the PATH.
+
 - Cargo:
 ```sh
 cargo install leetup
