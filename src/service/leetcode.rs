@@ -543,29 +543,30 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let mut start_comment = "";
         let line_comment;
         let mut end_comment = "";
-        let mut single_comment = "";
+        let single_comment;
 
         // TODO should have Single and Multiline comment available?
-        let comment_style: &CommentStyle = match &lang.comment {
-            Comment::C(single, multi) => multi.as_ref().unwrap_or(single),
-            Comment::Python3(single, _) => single,
-            Comment::MySQL(single, _) => single,
-        };
-
-        match comment_style {
-            CommentStyle::Single(s) => {
+        match &lang.comment {
+            Comment::C(CommentStyle::Single(s), multi) => {
+                single_comment = s;
+                if let Some(CommentStyle::Multiline {
+                        start,
+                        between,
+                        end,
+                }) = multi {
+                    start_comment = start.as_str();
+                    line_comment = between.as_str();
+                    end_comment = end.as_str();
+                } else {
+                    line_comment = single_comment;
+                }
+            }
+            Comment::Python3(CommentStyle::Single(s), _) |
+            Comment::MySQL(CommentStyle::Single(s), _) => {
                 line_comment = s;
                 single_comment = s;
-            }
-            CommentStyle::Multiline {
-                start,
-                between,
-                end,
-            } => {
-                start_comment = start;
-                line_comment = between;
-                end_comment = end;
-            }
+            },
+            _ => unreachable!(),
         };
 
         if let Some(content) = &response["data"]["question"]["content"].as_str() {
