@@ -1,7 +1,4 @@
-use crate::{
-    service::{ServiceProvider, Session},
-    LeetUpError, Result,
-};
+use crate::{service::ServiceProvider, service::Session, LeetUpError, Result};
 use anyhow::anyhow;
 use reqwest::{header, header::HeaderMap, header::HeaderValue, Client, Response};
 

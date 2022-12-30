@@ -1,11 +1,12 @@
+use crate::model::{
+    CodeDefinition, Problem, ProblemInfo, ProblemInfoSeq, StatStatusPair, SubmissionResult,
+    TopicTagQuestion,
+};
 use crate::{
     client,
     cmd::{self, List, OrderBy, Query, User},
     icon::Icon,
-    service::{
-        self, auth, CacheKey, Comment, CommentStyle, Difficulty, LangInfo, Problem, ProblemInfo,
-        ServiceProvider, Session,
-    },
+    service::{self, auth, CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session},
     template::{parse_code, InjectPosition, Pattern},
     Config, Either, LeetUpError, Result,
 };
@@ -16,7 +17,6 @@ use html2text::from_read;
 use leetup_cache::kvstore::KvStore;
 use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use serde::Deserialize;
 use serde_json::json;
 use std::cmp::Ord;
 use std::collections::HashMap;
@@ -24,7 +24,7 @@ use std::env;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::ops::Deref;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 /// Leetcode holds all attributes required to implement ServiceProvider trait.
@@ -52,7 +52,7 @@ impl<'a> Leetcode<'a> {
         let mut data_dir = PathBuf::new();
         data_dir.push(
             dirs::home_dir()
-                .ok_or_else(|| "Home directory not available!")
+                .ok_or("Home directory not available!")
                 .map_err(anyhow::Error::msg)?,
         );
         data_dir.push(".leetup");
@@ -84,7 +84,7 @@ impl<'a> Leetcode<'a> {
         //
         // NOTE: cache.remove throws "Key not found" error
         // so ignore that error if it is thrown.
-        if let Err(_) = self.cache.remove(CacheKey::Problems.into()) {}
+        if self.cache.remove(CacheKey::Problems.into()).is_err() {}
         Ok(())
     }
 
@@ -149,20 +149,20 @@ impl<'a> Leetcode<'a> {
     }
 
     fn logout(&mut self) -> Result<()> {
-        if let Err(_) = self.cache.remove(CacheKey::Session.into()) {
+        if self.cache.remove(CacheKey::Session.into()).is_err() {
             println!("User not logged in!");
             return Ok(());
         }
-        if let Err(_) = self.cache.remove(CacheKey::Problems.into()) {}
+        if self.cache.remove(CacheKey::Problems.into()).is_err() {}
         Ok(())
     }
 
-    fn execute_script(&self, cmd: &str, problem: &Problem, dir: &PathBuf) -> Result<()> {
-        let dir_str = dir.to_str().unwrap();
+    fn execute_script(&self, cmd: &str, problem: &Problem, dir: &Path) -> Result<()> {
+        let dir_str = dir.to_str().expect("Expected a valid directory");
         let cmd = cmd.replace(&Pattern::WorkingDir.to_string(), dir_str);
         let cmd = cmd.replace(&Pattern::Problem.to_string(), &problem.slug);
         std::process::Command::new("sh")
-            .args(&["-c", &cmd])
+            .args(["-c", &cmd])
             .spawn()?
             .wait()?;
         Ok(())
@@ -203,7 +203,7 @@ impl<'a> Leetcode<'a> {
                 // around the generated file. Find the right path used in your script!
                 println!(
                 "Generated: {}\n{}",
-                Color::Magenta(filename.to_str().unwrap()).make(),
+                Color::Magenta(filename.to_str().ok_or(LeetUpError::OptNone)?).make(),
                 Color::Yellow("Note: File path can be wrong if you used: `mkdir`, `cd`, `mv` to move around the generated file. Find the right path used in your script!").make()
             );
                 return Ok(());
@@ -212,7 +212,7 @@ impl<'a> Leetcode<'a> {
         self.write_content(&mut filename, problem, lang, content.as_bytes())?;
         println!(
             "Generated: {}",
-            Color::Magenta(filename.to_str().unwrap()).make()
+            Color::Magenta(filename.to_str().ok_or(LeetUpError::OptNone)?).make()
         );
 
         Ok(())
@@ -261,7 +261,7 @@ Expected:
                     "#,
                             Icon::Yes.to_string(),
                             result.status_msg,
-                            test_data.unwrap(),
+                            test_data.ok_or(LeetUpError::OptNone)?,
                             result
                                 .code_answer
                                 .expect("Code answer required!")
@@ -316,10 +316,10 @@ Expected:
                     "#,
                         Icon::_No.to_string(),
                         result.status_msg,
-                        test_data.unwrap_or("".to_string()),
+                        test_data.unwrap_or_default(),
                         result
                             .code_output
-                            .unwrap_or(Either::String("".to_string()))
+                            .unwrap_or_else(|| Either::String("".to_string()))
                             .to_string(),
                         result
                             .code_answer
@@ -362,7 +362,7 @@ Expected:
                         result.status_runtime,
                         result
                             .code_output
-                            .unwrap_or(Either::String("[Empty]".to_string()))
+                            .unwrap_or_else(|| Either::String("[Empty]".to_string()))
                     ))
                     .make()
                 );
@@ -399,7 +399,6 @@ Expected:
         client::post(self, &self.config.urls.graphql, &body, || None).await
     }
 }
-type ProblemInfoSeq = Vec<Box<dyn ProblemInfo + Send + 'static>>;
 
 #[async_trait]
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
@@ -501,7 +500,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
         let problem: Problem = probs
             .iter()
-            .find(|item| item.stat.frontend_question_id == pick.id.unwrap())
+            .find(|item| {
+                item.stat.frontend_question_id == pick.id.expect("Expected frontend_question_id")
+            })
             .map(|item| Problem {
                 id: item.stat.frontend_question_id,
                 link: format!("{}{}/", urls.problems, item.stat.question_title_slug),
@@ -613,7 +614,10 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 buf.push_str(definition)
             }
             let pattern_code = format!("\n{} {}\n", single_comment, Pattern::Code.to_string());
-            let code = &code_defs.get(&lang.name).unwrap().default_code;
+            let code = &code_defs
+                .get(&lang.name)
+                .ok_or(LeetUpError::OptNone)?
+                .default_code;
             debug!("Code: {}", code);
             let inject_code = self
                 .config()?
@@ -662,7 +666,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         let body = json!({
                 "lang":        problem.lang.to_owned(),
                 "question_id": problem.id,
-                "typed_code":  parse_code(problem.typed_code.as_ref().unwrap()),
+                "typed_code":  parse_code(problem.typed_code.as_ref().expect("Expected typed_code")),
                 "data_input":  test_data,
                 "judge_type":  "large"
         });
@@ -672,7 +676,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         debug!("problem_test response: {:?}", response);
         let url = self.config.urls.verify.replace(
             "$id",
-            &response["interpret_id"]
+            response["interpret_id"]
                 .as_str()
                 .ok_or_else(|| LeetUpError::Any(anyhow!("Unable to replace `interpret_id`")))?,
         );
@@ -686,7 +690,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "lang":        problem.lang.to_owned(),
             "question_id": problem.id,
             "test_mode":   false,
-            "typed_code":  parse_code(problem.typed_code.as_ref().unwrap()),
+            "typed_code":  parse_code(problem.typed_code.as_ref().expect("Expected typed_code")),
             "judge_type": "large",
         });
         let url = &self.config()?.urls.submit;
@@ -746,162 +750,5 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     fn name(&self) -> &'a str {
         self.name
-    }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Stat {
-    pub question_id: usize,
-
-    #[serde(rename = "question__article__live")]
-    pub question_article_live: Option<bool>,
-
-    #[serde(rename = "question__article__slug")]
-    pub question_article_slug: Option<String>,
-
-    #[serde(rename = "question__title")]
-    pub question_title: String,
-
-    #[serde(rename = "question__title_slug")]
-    pub question_title_slug: String,
-
-    #[serde(rename = "question__hide")]
-    pub question_hide: bool,
-
-    pub total_acs: usize,
-    pub total_submitted: usize,
-    pub frontend_question_id: usize,
-    pub is_new_question: bool,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct StatStatusPair {
-    pub stat: Stat,
-    pub status: Option<String>,
-    pub difficulty: Difficulty,
-    pub paid_only: bool,
-    pub is_favor: bool,
-    pub frequency: f64,
-    pub progress: f64,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct TopicTagQuestion {
-    pub status: Option<String>,
-    pub difficulty: Difficulty,
-    pub title: String,
-
-    #[serde(rename = "isPaidOnly")]
-    pub is_paid_only: bool,
-
-    #[serde(rename = "titleSlug")]
-    pub title_slug: String,
-
-    #[serde(rename = "questionFrontendId")]
-    pub question_frontend_id: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct ListResponse {
-    pub user_name: String,
-    pub num_solved: usize,
-    pub num_total: usize,
-    pub ac_easy: usize,
-    pub ac_medium: usize,
-    pub ac_hard: usize,
-    pub stat_status_pairs: Vec<StatStatusPair>,
-    pub frequency_high: usize,
-    pub frequency_mid: usize,
-    pub category_slug: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct CodeDefinition {
-    value: String,
-    text: String,
-
-    #[serde(rename = "defaultCode")]
-    default_code: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct SubmissionResult {
-    pub code_output: Option<Either>,
-    pub code_answer: Option<Either>,
-    pub expected_code_output: Option<Either>,
-    pub expected_code_answer: Option<Either>,
-    pub compare_result: Option<String>,
-    pub compile_error: Option<String>,
-    pub elapsed_time: u32,
-    pub full_compile_error: Option<String>,
-    pub lang: String,
-    pub memory: Option<u32>,
-    pub memory_percentile: Option<f32>,
-    pub pretty_lang: String,
-    pub question_id: Option<u32>,
-    pub run_success: bool,
-    pub runtime_percentile: Option<f32>,
-    pub state: String,
-    pub status_code: u32,
-    pub expected_status_code: Option<u32>,
-    pub status_memory: String,
-    pub status_msg: String,
-    pub status_runtime: String,
-    pub submission_id: String,
-    pub task_finish_time: i64,
-    pub expected_task_finish_time: Option<i64>,
-    pub total_correct: Option<u32>,
-    pub total_testcases: Option<u32>,
-}
-
-impl ProblemInfo for StatStatusPair {
-    fn question_title(&self) -> &str {
-        self.stat.question_title.as_str()
-    }
-
-    fn question_id(&self) -> usize {
-        self.stat.frontend_question_id
-    }
-
-    fn difficulty(&self) -> &Difficulty {
-        &self.difficulty
-    }
-
-    fn is_favorite(&self) -> Option<bool> {
-        Some(self.is_favor)
-    }
-
-    fn is_paid_only(&self) -> bool {
-        self.paid_only
-    }
-
-    fn status(&self) -> Option<&str> {
-        self.status.as_ref().map(String::as_ref)
-    }
-}
-
-impl ProblemInfo for TopicTagQuestion {
-    fn question_title(&self) -> &str {
-        self.title.as_str()
-    }
-
-    fn question_id(&self) -> usize {
-        self.question_frontend_id.parse().unwrap()
-    }
-
-    fn difficulty(&self) -> &Difficulty {
-        &self.difficulty
-    }
-
-    fn is_favorite(&self) -> Option<bool> {
-        None
-    }
-
-    fn is_paid_only(&self) -> bool {
-        self.is_paid_only
-    }
-
-    fn status(&self) -> Option<&str> {
-        self.status.as_ref().map(String::as_ref)
     }
 }
