@@ -1,8 +1,10 @@
+use crate::{Either, LeetUpError};
 use ansi_term::Color::{Green, Red, Yellow};
 use serde::Deserialize;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::cmp::Ordering;
 use std::str::FromStr;
+use DifficultyType::*;
 
 #[derive(Debug)]
 pub struct Problem {
@@ -20,9 +22,6 @@ pub enum DifficultyType {
     Medium,
     Hard,
 }
-
-use crate::{Either, LeetUpError};
-use DifficultyType::*;
 
 impl FromStr for DifficultyType {
     type Err = LeetUpError;
