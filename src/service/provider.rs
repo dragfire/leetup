@@ -1,16 +1,15 @@
+use crate::model::DifficultyType::{Easy, Hard, Medium};
+use crate::model::{DifficultyType, ProblemInfo};
+use crate::service::Session;
 use crate::{
     cmd::{self, OrderBy, Query, User},
     icon::Icon,
-    Config, LeetUpError, Result,
+    Config, Result,
 };
 use ansi_term::Colour::{Green, Red, Yellow};
 use async_trait::async_trait;
-use cookie::Cookie;
 use leetup_cache::kvstore::KvStore;
-use serde::{Deserialize, Serialize};
-use serde_repr::*;
 use std::cmp::Ordering;
-use std::str::FromStr;
 
 /// ServiceProvider trait provides all the functionalities required to solve problems
 /// on any type of Online Judge through leetup CLI.
@@ -123,127 +122,6 @@ pub trait ServiceProvider<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct Problem {
-    pub id: usize,
-    pub slug: String,
-    pub lang: String,
-    pub link: String,
-    pub typed_code: Option<String>,
-}
-
-pub trait ProblemInfo {
-    fn question_id(&self) -> usize;
-    fn question_title(&self) -> &str;
-    fn difficulty(&self) -> &Difficulty;
-    fn is_favorite(&self) -> Option<bool>;
-    fn is_paid_only(&self) -> bool;
-    fn status(&self) -> Option<&str>;
-}
-
-impl PartialEq for dyn ProblemInfo + '_ + Send {
-    fn eq(&self, other: &Self) -> bool {
-        self.question_id().eq(&other.question_id())
-    }
-}
-
-impl Eq for dyn ProblemInfo + '_ + Send {}
-
-impl PartialOrd for dyn ProblemInfo + '_ + Send {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for dyn ProblemInfo + '_ + Send {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.question_id().cmp(&other.question_id())
-    }
-}
-
-impl PartialEq for dyn ProblemInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.question_id().eq(&other.question_id())
-    }
-}
-
-impl Eq for dyn ProblemInfo {}
-
-impl PartialOrd for dyn ProblemInfo {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for dyn ProblemInfo {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.question_id().cmp(&other.question_id())
-    }
-}
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Serialize_repr, Deserialize_repr, Debug)]
-#[repr(u8)]
-pub enum DifficultyType {
-    Easy = 1,
-    Medium,
-    Hard,
-}
-
-use DifficultyType::*;
-
-impl FromStr for DifficultyType {
-    type Err = LeetUpError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let easy = Easy.to_string();
-        let medium = Medium.to_string();
-        let hard = Hard.to_string();
-        match s {
-            x if x == easy => Ok(Easy),
-            x if x == medium => Ok(Medium),
-            x if x == hard => Ok(Hard),
-            _ => Err(LeetUpError::UnexpectedCommand),
-        }
-    }
-}
-
-impl ToString for DifficultyType {
-    fn to_string(&self) -> String {
-        match self {
-            Easy => "Easy".into(),
-            Medium => "Medium".into(),
-            Hard => "Hard".into(),
-        }
-    }
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-pub enum Difficulty {
-    Cardinal { level: DifficultyType },
-    String(String),
-}
-
-impl<'a> From<&'_ Difficulty> for DifficultyType {
-    fn from(difficulty: &Difficulty) -> Self {
-        match difficulty {
-            Difficulty::Cardinal { level } => level.clone(),
-            Difficulty::String(s) => DifficultyType::from_str(s).unwrap(),
-        }
-    }
-}
-
-impl ToString for Difficulty {
-    fn to_string(&self) -> String {
-        let level: DifficultyType = self.into();
-        match level {
-            Easy => Green.paint(Easy.to_string()).to_string(),
-            Medium => Yellow.paint(Medium.to_string()).to_string(),
-            Hard => Red.paint(Hard.to_string()).to_string(),
-        }
-    }
-}
-
 pub enum CacheKey<'a> {
     Session,
     Problems,
@@ -258,69 +136,4 @@ impl<'a> From<CacheKey<'_>> for String {
             CacheKey::Problem(id) => format!("problem_{}", id),
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Session {
-    pub id: String,
-    pub csrf: String,
-}
-
-impl Session {
-    pub fn new(id: String, csrf: String) -> Self {
-        Session { id, csrf }
-    }
-}
-
-impl FromStr for Session {
-    type Err = cookie::ParseError;
-
-    fn from_str(raw: &str) -> std::result::Result<Self, Self::Err> {
-        let raw_split = raw.split("; ");
-
-        let cookies = raw_split.map(Cookie::parse).collect::<Vec<_>>();
-        let mut id = String::new();
-        let mut csrf = String::new();
-
-        for cookie in cookies {
-            let cookie = cookie?;
-            let name = cookie.name();
-            match name {
-                "LEETCODE_SESSION" => id = cookie.value().to_string(),
-                "csrftoken" => csrf = cookie.value().to_string(),
-                _ => (),
-            }
-        }
-
-        Ok(Session { id, csrf })
-    }
-}
-
-fn session_to_cookie(id: &str, csrf: &str) -> String {
-    let mut s = String::new();
-    s.push_str(&format!("{}={}; ", "LEETCODE_SESSION", id));
-    s.push_str(&format!("{}={}", "csrftoken", csrf));
-
-    s
-}
-
-impl From<Session> for String {
-    fn from(session: Session) -> Self {
-        session_to_cookie(&session.id, &session.csrf)
-    }
-}
-
-impl From<&Session> for String {
-    fn from(session: &Session) -> Self {
-        session_to_cookie(&session.id, &session.csrf)
-    }
-}
-
-#[test]
-fn test_cookie_parser() {
-    let cookie = "csrftoken=asdsd; LEETCODE_SESSION=asdasd";
-    let session: Session = Session::from_str(cookie).unwrap();
-
-    assert!(!session.csrf.is_empty());
-    assert!(!session.id.is_empty());
 }

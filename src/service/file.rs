@@ -1,4 +1,5 @@
-use crate::{service::Problem, template::Pattern, LeetUpError, Result};
+use crate::model::Problem;
+use crate::{template::Pattern, LeetUpError, Result};
 use log::*;
 use std::collections::HashMap;
 use std::fs::File;

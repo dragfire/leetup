@@ -17,3 +17,5 @@ Cargo.lock
 data/
 
 request/target
+/.idea/
+/.github/
