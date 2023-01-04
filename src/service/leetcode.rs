@@ -660,6 +660,36 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .await?;
         debug!("Response: {}", response);
 
+        let mut definition = None;
+        let mut start_comment = "";
+        let line_comment;
+        let mut end_comment = "";
+        let single_comment;
+
+        // TODO should have Single and Multiline comment available?
+        match &lang.comment {
+            Comment::C(CommentStyle::Single(s), multi) => {
+                single_comment = s;
+                if let Some(CommentStyle::Multiline {
+                        start,
+                        between,
+                        end,
+                }) = multi {
+                    start_comment = start.as_str();
+                    line_comment = between.as_str();
+                    end_comment = end.as_str();
+                } else {
+                    line_comment = single_comment;
+                }
+            }
+            Comment::Python3(CommentStyle::Single(s), _) |
+            Comment::MySQL(CommentStyle::Single(s), _) => {
+                line_comment = s;
+                single_comment = s;
+            },
+            _ => unreachable!(),
+        };
+
         self.generate_problem_stub(&lang, &problem, problem_id, slug, &response)?;
 
         Ok(())
