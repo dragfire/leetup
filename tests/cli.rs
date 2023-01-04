@@ -5,6 +5,8 @@ use std::process::Command;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
+    use std::path::PathBuf;
 
     #[test]
     fn cli_version() {
@@ -55,8 +57,12 @@ mod tests {
 
     #[test]
     fn pick_problem() {
-        // TODO add test
-        assert!(true);
+        let mut response_data_path: PathBuf = std::env::current_dir().unwrap();
+        response_data_path.push("tests/data/pick_problem_response.json");
+        println!("Path {:#?}", response_data_path.to_str());
+        let json: serde_json::Value =
+            serde_json::from_reader(File::open(response_data_path).unwrap()).unwrap();
+        println!("{:#?}", json);
     }
 
     #[test]

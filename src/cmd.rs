@@ -1,9 +1,12 @@
+use crate::service::{CacheKey, Session};
 use crate::{
     service::{leetcode::Leetcode, Lang, ServiceProvider},
-    Result,
+    Config, Result,
 };
+use leetup_cache::kvstore::KvStore;
 use log::debug;
 use spinners::{Spinner, Spinners};
+use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -191,7 +194,12 @@ pub async fn process() -> Result<()> {
     let opt = LeetUpArgs::from_args();
     debug!("Options: {:#?}", opt);
 
-    let mut provider = Leetcode::new()?;
+    let config_dir = create_config_directory()?;
+    let mut cache = KvStore::open(&config_dir)?;
+    let session = get_session(&mut cache)?;
+    let config = get_config(config_dir);
+
+    let mut provider = Leetcode::new(session.as_ref(), &config, cache)?;
 
     match opt.command {
         Command::Pick(pick) => {
@@ -215,4 +223,33 @@ pub async fn process() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn get_config(mut config_dir: PathBuf) -> Config {
+    config_dir.push("config.json");
+    Config::get(config_dir)
+}
+
+fn get_session(cache: &mut KvStore) -> Result<Option<Session>> {
+    let mut session: Option<Session> = None;
+    let session_val = cache.get(CacheKey::Session.into())?;
+
+    // Set session if the user is logged in
+    if let Some(ref val) = session_val {
+        session = Some(serde_json::from_str::<Session>(val)?);
+    }
+    Ok(session)
+}
+
+fn create_config_directory() -> Result<PathBuf> {
+    // create .leetup directory: ~/.leetup/*.log
+    let mut data_dir = PathBuf::new();
+    data_dir.push(
+        dirs::home_dir()
+            .ok_or("Home directory not available!")
+            .map_err(anyhow::Error::msg)?,
+    );
+    data_dir.push(".leetup");
+
+    Ok(data_dir)
 }

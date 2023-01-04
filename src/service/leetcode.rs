@@ -3,7 +3,7 @@ use crate::model::{
     TopicTagQuestion,
 };
 use crate::{
-    client,
+    client::RemoteClient,
     cmd::{self, List, OrderBy, Query, User},
     icon::Icon,
     service::{self, auth, CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session},
@@ -17,7 +17,7 @@ use html2text::from_read;
 use leetup_cache::kvstore::KvStore;
 use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::cmp::Ord;
 use std::collections::HashMap;
 use std::env;
@@ -32,54 +32,36 @@ pub struct Leetcode<'a> {
     /// Store user session
     ///
     /// If session is empty, user should be able to view problems.
-    session: Option<Session>,
+    session: Option<&'a Session>,
 
     /// Get config from config.json
-    config: Config,
+    config: &'a Config,
 
     /// Provides caching mechanism for OJ(Online Judge).
     cache: KvStore,
 
     /// Service provider name
     name: &'a str,
+
+    remote_client: RemoteClient<'a>,
 }
 
 impl<'a> Leetcode<'a> {
-    pub fn new() -> Result<Self> {
+    pub fn new(session: Option<&'a Session>, config: &'a Config, cache: KvStore) -> Result<Self> {
         let name = "leetcode";
-
-        // create .leetup directory: ~/.leetup/*.log
-        let mut data_dir = PathBuf::new();
-        data_dir.push(
-            dirs::home_dir()
-                .ok_or("Home directory not available!")
-                .map_err(anyhow::Error::msg)?,
-        );
-        data_dir.push(".leetup");
-
-        let mut cache = KvStore::open(&data_dir)?;
-        let mut session: Option<Session> = None;
-        let session_val = cache.get(CacheKey::Session.into())?;
-
-        // Set session if the user is logged in
-        if let Some(ref val) = session_val {
-            session = Some(serde_json::from_str::<Session>(val)?);
-        }
-        data_dir.push("config.json");
-        let config = Config::get(data_dir);
 
         Ok(Leetcode {
             session,
             config,
             cache,
             name,
+            remote_client: RemoteClient::new(config, session),
         })
     }
 
     fn cache_session(&mut self, session: Session) -> Result<()> {
         let session_str = serde_json::to_string(&session)?;
         self.cache.set(CacheKey::Session.into(), session_str)?;
-        self.session = Some(session);
         // remove key `problems`, rebuild problems cache.
         //
         // NOTE: cache.remove throws "Key not found" error
@@ -103,20 +85,23 @@ impl<'a> Leetcode<'a> {
         body: serde_json::Value,
     ) -> Result<serde_json::Value> {
         let url = url.replace("$slug", &problem.slug);
-        client::post(self, &url, &body, || {
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::REFERER,
-                HeaderValue::from_str(&problem.link).expect("Link is required!"),
-            );
-            Some(headers)
-        })
-        .await
+        self.remote_client
+            .post(&url, &body, || {
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    header::REFERER,
+                    HeaderValue::from_str(&problem.link).expect("Link is required!"),
+                );
+                Some(headers)
+            })
+            .await
     }
 
     async fn verify_run_code(&self, url: &str) -> Result<serde_json::Value> {
         loop {
-            let response = client::get(url, None, self.session())
+            let response = self
+                .remote_client
+                .get(url, None, self.session())
                 .await?
                 .json::<serde_json::Value>()
                 .await?;
@@ -396,14 +381,144 @@ Expected:
             "query": query
         });
 
-        client::post(self, &self.config.urls.graphql, &body, || None).await
+        self.remote_client
+            .post(&self.config.urls.graphql, &body, || None)
+            .await
+    }
+
+    fn generate_problem_stub(
+        &mut self,
+        lang: &LangInfo,
+        problem: &Problem,
+        problem_id: usize,
+        slug: String,
+        response: &Value,
+    ) -> Result<()> {
+        let mut definition = None;
+        let mut start_comment = "";
+        let line_comment;
+        let mut end_comment = "";
+        let mut single_comment = "";
+
+        // TODO should have Single and Multiline comment available?
+        let comment_style: &CommentStyle = match &lang.comment {
+            Comment::C(single, multi) => multi.as_ref().unwrap_or(single),
+            Comment::Python3(single, _) => single,
+            Comment::MySQL(single, _) => single,
+        };
+
+        match comment_style {
+            CommentStyle::Single(s) => {
+                line_comment = s;
+                single_comment = s;
+            }
+            CommentStyle::Multiline {
+                start,
+                between,
+                end,
+            } => {
+                start_comment = start;
+                line_comment = between;
+                end_comment = end;
+            }
+        };
+
+        if let Some(content) = &response["data"]["question"]["content"].as_str() {
+            let content = from_read(content.as_bytes(), 80);
+            let content = content.replace("**", "");
+            let content = content
+                .split('\n')
+                .map(|s| format!("{} {}", line_comment, s))
+                .collect::<Vec<String>>()
+                .join("\n");
+            info!("Single Comment: {}", single_comment);
+
+            let pattern_custom = format!("{} {}", single_comment, Pattern::CustomCode.to_string());
+            let pattern_leetup_info =
+                format!("{} {}", single_comment, Pattern::LeetUpInfo.to_string());
+            let content = format!(
+                "{}\n{} id={} lang={} slug={}\n\n{}\n{}\n{}\n{}",
+                pattern_custom,
+                pattern_leetup_info,
+                problem_id,
+                lang.name,
+                slug,
+                start_comment,
+                content,
+                end_comment,
+                pattern_custom
+            );
+            debug!("Content: {}", content);
+            definition = Some(content);
+        }
+
+        let mut filename = env::current_dir()?;
+        filename.push(slug);
+        filename.set_extension(&lang.extension);
+
+        if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
+            let mut buf = String::new();
+            let code_defs: Vec<(String, CodeDefinition)> =
+                serde_json::from_str::<Vec<CodeDefinition>>(code_defs)?
+                    .into_iter()
+                    .map(|def| (def.value.to_owned(), def))
+                    .collect();
+            let code_defs: HashMap<_, _> = code_defs.into_iter().collect();
+            if let Some(ref definition) = definition {
+                buf.push_str(definition)
+            }
+            let pattern_code = format!("\n{} {}\n", single_comment, Pattern::Code.to_string());
+            let code = &code_defs
+                .get(&lang.name)
+                .ok_or(LeetUpError::OptNone)?
+                .default_code;
+            debug!("Code: {}", code);
+            let inject_code = self
+                .config()?
+                .inject_code
+                .as_ref()
+                .and_then(|c| c.get(&problem.lang));
+            debug!("InjectCode: {:#?}", inject_code);
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut buf,
+                    single_comment,
+                    inject_code.before_code_exclude.as_ref(),
+                    InjectPosition::BeforeCodeExclude,
+                )?;
+            }
+            buf.push_str(&pattern_code);
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut buf,
+                    single_comment,
+                    inject_code.before_code.as_ref(),
+                    InjectPosition::BeforeCode,
+                )?;
+            }
+            buf.push('\n');
+            buf.push_str(code);
+            buf.push_str(&pattern_code);
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut buf,
+                    single_comment,
+                    inject_code.after_code.as_ref(),
+                    InjectPosition::AfterCode,
+                )?;
+            }
+
+            self.pick_hook(&buf, &problem, &lang)?;
+        }
+
+        Ok(())
     }
 }
 
 #[async_trait]
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn session(&self) -> Option<&Session> {
-        self.session.as_ref()
+        self.session
     }
 
     fn config(&self) -> Result<&Config> {
@@ -421,7 +536,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         } else {
             let url = &self.config.urls.problems_all;
             let session = self.session();
-            problems_res = client::get(url, None, session)
+            problems_res = self
+                .remote_client
+                .get(url, None, session)
                 .await?
                 .json::<serde_json::value::Value>()
                 .await
@@ -537,125 +654,13 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             "operationName": "getQuestionDetail"
         });
 
-        let response = client::post(self, &urls.graphql, &body, || None).await?;
-        debug!("Response: {:#?}", response);
+        let response = self
+            .remote_client
+            .post(&urls.graphql, &body, || None)
+            .await?;
+        debug!("Response: {}", response);
 
-        let mut definition = None;
-        let mut start_comment = "";
-        let line_comment;
-        let mut end_comment = "";
-        let mut single_comment = "";
-
-        // TODO should have Single and Multiline comment available?
-        let comment_style: &CommentStyle = match &lang.comment {
-            Comment::C(single, multi) => multi.as_ref().unwrap_or(single),
-            Comment::Python3(single, _) => single,
-            Comment::MySQL(single, _) => single,
-        };
-
-        match comment_style {
-            CommentStyle::Single(s) => {
-                line_comment = s;
-                single_comment = s;
-            }
-            CommentStyle::Multiline {
-                start,
-                between,
-                end,
-            } => {
-                start_comment = start;
-                line_comment = between;
-                end_comment = end;
-            }
-        };
-
-        if let Some(content) = &response["data"]["question"]["content"].as_str() {
-            let content = from_read(content.as_bytes(), 80);
-            let content = content.replace("**", "");
-            let content = content
-                .split('\n')
-                .map(|s| format!("{} {}", line_comment, s))
-                .collect::<Vec<String>>()
-                .join("\n");
-            info!("Single Comment: {}", single_comment);
-
-            let pattern_custom = format!("{} {}", single_comment, Pattern::CustomCode.to_string());
-            let pattern_leetup_info =
-                format!("{} {}", single_comment, Pattern::LeetUpInfo.to_string());
-            let content = format!(
-                "{}\n{} id={} lang={} slug={}\n\n{}\n{}\n{}\n{}",
-                pattern_custom,
-                pattern_leetup_info,
-                problem_id,
-                lang.name,
-                slug,
-                start_comment,
-                content,
-                end_comment,
-                pattern_custom
-            );
-            debug!("Content: {}", content);
-            definition = Some(content);
-        }
-
-        let mut filename = env::current_dir()?;
-        filename.push(slug);
-        filename.set_extension(&lang.extension);
-
-        if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
-            let mut buf = String::new();
-            let code_defs: Vec<(String, CodeDefinition)> =
-                serde_json::from_str::<Vec<CodeDefinition>>(code_defs)?
-                    .into_iter()
-                    .map(|def| (def.value.to_owned(), def))
-                    .collect();
-            let code_defs: HashMap<_, _> = code_defs.into_iter().collect();
-            if let Some(ref definition) = definition {
-                buf.push_str(definition)
-            }
-            let pattern_code = format!("\n{} {}\n", single_comment, Pattern::Code.to_string());
-            let code = &code_defs
-                .get(&lang.name)
-                .ok_or(LeetUpError::OptNone)?
-                .default_code;
-            debug!("Code: {}", code);
-            let inject_code = self
-                .config()?
-                .inject_code
-                .as_ref()
-                .and_then(|c| c.get(&problem.lang));
-            debug!("InjectCode: {:#?}", inject_code);
-            if let Some(inject_code) = inject_code {
-                self.write_code_fragment(
-                    &mut buf,
-                    single_comment,
-                    inject_code.before_code_exclude.as_ref(),
-                    InjectPosition::BeforeCodeExclude,
-                )?;
-            }
-            buf.push_str(&pattern_code);
-            if let Some(inject_code) = inject_code {
-                self.write_code_fragment(
-                    &mut buf,
-                    single_comment,
-                    inject_code.before_code.as_ref(),
-                    InjectPosition::BeforeCode,
-                )?;
-            }
-            buf.push('\n');
-            buf.push_str(&code);
-            buf.push_str(&pattern_code);
-            if let Some(inject_code) = inject_code {
-                self.write_code_fragment(
-                    &mut buf,
-                    single_comment,
-                    inject_code.after_code.as_ref(),
-                    InjectPosition::AfterCode,
-                )?;
-            }
-
-            self.pick_hook(&buf, &problem, &lang)?;
-        }
+        self.generate_problem_stub(&lang, &problem, problem_id, slug, &response)?;
 
         Ok(())
     }
@@ -713,7 +718,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 std::io::stdin()
                     .read_line(&mut cookie_value)
                     .expect("Failed to read cookie from input");
-                format!(r#"{}"#, cookie_value.trim_end())
+                cookie_value.trim_end().to_string()
             });
 
             // filter out all unnecessary cookies
@@ -724,7 +729,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         }
 
         // github login
-        if let Some(_) = user.github {
+        if user.github.is_some() {
             match auth::github_login(self).await {
                 Ok(session) => {
                     println!("\n{}", Color::Green("User logged in!").make());
