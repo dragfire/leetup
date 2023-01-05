@@ -6,7 +6,7 @@ use std::process::Command;
 mod tests {
     use super::*;
     use std::fs::File;
-    use std::path::PathBuf;
+    use std::io::Read;
 
     #[test]
     fn cli_version() {
@@ -56,13 +56,25 @@ mod tests {
     }
 
     #[test]
-    fn pick_problem() {
-        let mut response_data_path: PathBuf = std::env::current_dir().unwrap();
-        response_data_path.push("tests/data/pick_problem_response.json");
-        println!("Path {:#?}", response_data_path.to_str());
-        let json: serde_json::Value =
-            serde_json::from_reader(File::open(response_data_path).unwrap()).unwrap();
-        println!("{:#?}", json);
+    fn pick_problem_lang_rust() {
+        let bytes: Vec<u8> = Command::cargo_bin("leetup")
+            .unwrap()
+            .args(&["pick", "1"])
+            .assert()
+            .get_output()
+            .stdout
+            .clone();
+        let stripped_output = strip_ansi_escapes::strip(bytes).unwrap();
+        let generated_path = String::from_utf8(stripped_output)
+            .unwrap()
+            .replace("Generated: ", "");
+        let result = generated_path.trim_end();
+
+        let mut generated_file =  File::open(result).unwrap();
+        let mut buffer = String::new();
+        generated_file.read_to_string(&mut buffer).unwrap();
+        assert!(buffer.contains("// @leetup=custom\n// @leetup=info id=1 lang=rust slug=two-sum"));
+        assert!(buffer.contains("// @leetup=code\n"));
     }
 
     #[test]
