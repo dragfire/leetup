@@ -46,475 +46,6 @@ pub struct Leetcode<'a> {
     remote_client: RemoteClient<'a>,
 }
 
-impl<'a> Leetcode<'a> {
-    pub fn new(session: Option<&'a Session>, config: &'a Config, cache: KvStore) -> Result<Self> {
-        let name = "leetcode";
-
-        Ok(Leetcode {
-            session,
-            config,
-            cache,
-            name,
-            remote_client: RemoteClient::new(config, session),
-        })
-    }
-
-    fn cache_session(&mut self, session: Session) -> Result<()> {
-        let session_str = serde_json::to_string(&session)?;
-        self.cache.set(CacheKey::Session.into(), session_str)?;
-        // remove key `problems`, rebuild problems cache.
-        //
-        // NOTE: cache.remove throws "Key not found" error
-        // so ignore that error if it is thrown.
-        if self.cache.remove(CacheKey::Problems.into()).is_err() {}
-        Ok(())
-    }
-
-    pub async fn fetch_problems(&mut self) -> Result<Vec<StatStatusPair>> {
-        let problems = self.fetch_all_problems().await?;
-        let problems: Vec<StatStatusPair> =
-            serde_json::from_value(problems["stat_status_pairs"].clone())?;
-
-        Ok(problems)
-    }
-
-    async fn run_code(
-        &self,
-        url: &str,
-        problem: &Problem,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value> {
-        let url = url.replace("$slug", &problem.slug);
-        self.remote_client
-            .post(&url, &body, || {
-                let mut headers = HeaderMap::new();
-                headers.insert(
-                    header::REFERER,
-                    HeaderValue::from_str(&problem.link).expect("Link is required!"),
-                );
-                Some(headers)
-            })
-            .await
-    }
-
-    async fn verify_run_code(&self, url: &str) -> Result<serde_json::Value> {
-        loop {
-            let response = self
-                .remote_client
-                .get(url, None, self.session())
-                .await?
-                .json::<serde_json::Value>()
-                .await?;
-            if response["state"] == "SUCCESS" {
-                return Ok(response);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
-    }
-
-    fn write_code_fragment(
-        &self,
-        buf: &mut String,
-        comment: &str,
-        code_fragment: Option<&Either>,
-        pos: InjectPosition,
-    ) -> Result<()> {
-        if let Some(either) = code_fragment {
-            let inject_code_pos_pattern = format!(
-                "\n{} {}\n",
-                comment,
-                Pattern::InjectCodePosition(pos).to_string()
-            );
-            buf.push_str(&inject_code_pos_pattern);
-            let code_fragment = either.to_string();
-            buf.push_str(&code_fragment);
-            buf.push_str(&inject_code_pos_pattern);
-        }
-        Ok(())
-    }
-
-    fn logout(&mut self) -> Result<()> {
-        if self.cache.remove(CacheKey::Session.into()).is_err() {
-            println!("User not logged in!");
-            return Ok(());
-        }
-        if self.cache.remove(CacheKey::Problems.into()).is_err() {}
-        Ok(())
-    }
-
-    fn execute_script(&self, cmd: &str, problem: &Problem, dir: &Path) -> Result<()> {
-        let dir_str = dir.to_str().expect("Expected a valid directory");
-        let cmd = cmd.replace(&Pattern::WorkingDir.to_string(), dir_str);
-        let cmd = cmd.replace(&Pattern::Problem.to_string(), &problem.slug);
-        std::process::Command::new("sh")
-            .args(["-c", &cmd])
-            .spawn()?
-            .wait()?;
-        Ok(())
-    }
-
-    fn pick_hook(&self, content: &str, problem: &Problem, lang: &LangInfo) -> Result<()> {
-        let mut curr_dir = env::current_dir()?;
-        let mut filename = curr_dir.clone();
-        let cfg = self.config()?;
-        if let Some(ref cfg) = cfg.pick_hook {
-            if let Some(hook_cfg) = cfg.get(&lang.name) {
-                if let Some(dir) = hook_cfg.working_dir() {
-                    let dir = shellexpand::tilde(dir);
-                    curr_dir = PathBuf::from(dir.deref());
-                    fs::create_dir_all(&curr_dir)?;
-                    filename = curr_dir.clone();
-                }
-                if let Some(pre) = hook_cfg.script_pre_generation() {
-                    println!(
-                        "{}",
-                        Color::Cyan("Executing pre-generation script...").make()
-                    );
-                    let cmd = pre.to_string();
-                    self.execute_script(&cmd, problem, &curr_dir)?;
-                }
-                self.write_content(&mut filename, problem, lang, content.as_bytes())?;
-
-                if let Some(post) = hook_cfg.script_post_generation() {
-                    println!(
-                        "{}",
-                        Color::Cyan("Executing post-generation script...").make()
-                    );
-                    let cmd = post.to_string();
-                    self.execute_script(&cmd, problem, &curr_dir)?;
-                }
-
-                // File path can be wrong if you used: `mkdir`, `cd`, `mv` to move
-                // around the generated file. Find the right path used in your script!
-                println!(
-                "Generated: {}\n{}",
-                Color::Magenta(filename.to_str().ok_or(LeetUpError::OptNone)?).make(),
-                Color::Yellow("Note: File path can be wrong if you used: `mkdir`, `cd`, `mv` to move around the generated file. Find the right path used in your script!").make()
-            );
-                return Ok(());
-            }
-        }
-        self.write_content(&mut filename, problem, lang, content.as_bytes())?;
-        println!(
-            "Generated: {}",
-            Color::Magenta(filename.to_str().ok_or(LeetUpError::OptNone)?).make()
-        );
-
-        Ok(())
-    }
-
-    fn write_content(
-        &self,
-        filename: &mut PathBuf,
-        problem: &Problem,
-        lang: &LangInfo,
-        content: &[u8],
-    ) -> Result<()> {
-        filename.push(&problem.slug);
-        filename.set_extension(&lang.extension);
-
-        let mut file = File::create(&filename)?;
-        file.write_all(content)?;
-        Ok(())
-    }
-
-    fn print_judge_result(
-        &self,
-        test_data: Option<String>,
-        result: SubmissionResult,
-    ) -> Result<()> {
-        debug!("judge result: {:?}", result);
-        match result.status_code {
-            10 => {
-                // Accepted
-
-                // Test result
-                if result.expected_status_code.is_some() {
-                    println!(
-                        "{}",
-                        Color::Green(&format!(
-                            r#"
- {} {}
-Input:
-{}
-
-Output:
-{}
-
-Expected:
-{}
-                    "#,
-                            Icon::Yes.to_string(),
-                            result.status_msg,
-                            test_data.ok_or(LeetUpError::OptNone)?,
-                            result
-                                .code_answer
-                                .expect("Code answer required!")
-                                .to_string(),
-                            result
-                                .expected_code_answer
-                                .expect("Expected code answer required!")
-                                .to_string(),
-                        ))
-                        .make()
-                    );
-                } else {
-                    println!(
-                        "{}",
-                        Color::Green(&format!(
-                            r#"
- {} {}
- {}/{} cases passed ({})
- Your runtime beats {}% of {} submissions
- Your memory usage beats {}% of {} submissions ({})
-                    "#,
-                            Icon::Yes.to_string(),
-                            result.status_msg,
-                            result.total_correct.unwrap_or(0),
-                            result.total_testcases.unwrap_or(0),
-                            result.status_runtime,
-                            result.runtime_percentile.unwrap_or(0.0),
-                            result.lang,
-                            result.memory_percentile.unwrap_or(0.0),
-                            result.lang,
-                            result.status_memory
-                        ))
-                        .make()
-                    );
-                }
-            }
-            15 => {
-                // Runtime error
-                println!(
-                    "{}",
-                    Color::Red(&format!(
-                        r#"
- {} {}
-Input:
-{}
-
-Output:
-{}
-
-Expected:
-{}
-                    "#,
-                        Icon::_No.to_string(),
-                        result.status_msg,
-                        test_data.unwrap_or_default(),
-                        result
-                            .code_output
-                            .unwrap_or_else(|| Either::String("".to_string()))
-                            .to_string(),
-                        result
-                            .code_answer
-                            .unwrap_or(Either::String("".to_string()))
-                            .to_string()
-                    ))
-                    .make()
-                );
-            }
-            20 => {
-                // Compile Error
-                println!(
-                    "{}",
-                    Color::Red(&format!(
-                        "\n {} {}\n {}",
-                        Icon::_No.to_string(),
-                        result.status_msg,
-                        result
-                            .full_compile_error
-                            .ok_or_else(|| "Failed to get compilation error!")
-                            .map_err(anyhow::Error::msg)?
-                    ))
-                    .make()
-                );
-            }
-            _ => {
-                // Wrong Answer | TimeLimitExceeded
-                println!(
-                    "{}",
-                    Color::Red(&format!(
-                        r#"
- {} {}
- {}/{} cases passed ({})
- Failed Test: {:#?}
-                    "#,
-                        Icon::_No.to_string(),
-                        result.status_msg,
-                        result.total_correct.unwrap_or(0),
-                        result.total_testcases.unwrap_or(0),
-                        result.status_runtime,
-                        result
-                            .code_output
-                            .unwrap_or_else(|| Either::String("[Empty]".to_string()))
-                    ))
-                    .make()
-                );
-            }
-        }
-        Ok(())
-    }
-
-    async fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
-        let query = r#"
-            query getTopicTag($slug: String!) {
-                 topicTag(slug: $slug) {
-                   name
-                   slug
-                   questions {
-                     difficulty
-                     isPaidOnly
-                     title
-                     titleSlug
-                     questionFrontendId
-                     status
-                   }
-                 }
-             }
-        "#;
-        let body: serde_json::Value = json!({
-            "operationName": "getTopicTag",
-            "variables": {
-                "slug": tag,
-            },
-            "query": query
-        });
-
-        self.remote_client
-            .post(&self.config.urls.graphql, &body, || None)
-            .await
-    }
-
-    fn generate_problem_stub(
-        &mut self,
-        lang: &LangInfo,
-        problem: &Problem,
-        problem_id: usize,
-        slug: String,
-        response: &Value,
-    ) -> Result<()> {
-        let mut definition = None;
-        let mut start_comment = "";
-        let line_comment;
-        let mut end_comment = "";
-        let mut single_comment = "";
-
-        // TODO should have Single and Multiline comment available?
-        let comment_style: &CommentStyle = match &lang.comment {
-            Comment::C(single, multi) => multi.as_ref().unwrap_or(single),
-            Comment::Python3(single, _) => single,
-            Comment::MySQL(single, _) => single,
-        };
-
-        match comment_style {
-            CommentStyle::Single(s) => {
-                line_comment = s;
-                single_comment = s;
-            }
-            CommentStyle::Multiline {
-                start,
-                between,
-                end,
-            } => {
-                start_comment = start;
-                line_comment = between;
-                end_comment = end;
-            }
-        };
-
-        if let Some(content) = &response["data"]["question"]["content"].as_str() {
-            let content = from_read(content.as_bytes(), 80);
-            let content = content.replace("**", "");
-            let content = content
-                .split('\n')
-                .map(|s| format!("{} {}", line_comment, s))
-                .collect::<Vec<String>>()
-                .join("\n");
-            info!("Single Comment: {}", single_comment);
-
-            let pattern_custom = format!("{} {}", single_comment, Pattern::CustomCode.to_string());
-            let pattern_leetup_info =
-                format!("{} {}", single_comment, Pattern::LeetUpInfo.to_string());
-            let content = format!(
-                "{}\n{} id={} lang={} slug={}\n\n{}\n{}\n{}\n{}",
-                pattern_custom,
-                pattern_leetup_info,
-                problem_id,
-                lang.name,
-                slug,
-                start_comment,
-                content,
-                end_comment,
-                pattern_custom
-            );
-            debug!("Content: {}", content);
-            definition = Some(content);
-        }
-
-        let mut filename = env::current_dir()?;
-        filename.push(slug);
-        filename.set_extension(&lang.extension);
-
-        if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
-            let mut buf = String::new();
-            let code_defs: Vec<(String, CodeDefinition)> =
-                serde_json::from_str::<Vec<CodeDefinition>>(code_defs)?
-                    .into_iter()
-                    .map(|def| (def.value.to_owned(), def))
-                    .collect();
-            let code_defs: HashMap<_, _> = code_defs.into_iter().collect();
-            if let Some(ref definition) = definition {
-                buf.push_str(definition)
-            }
-            let pattern_code = format!("\n{} {}\n", single_comment, Pattern::Code.to_string());
-            let code = &code_defs
-                .get(&lang.name)
-                .ok_or(LeetUpError::OptNone)?
-                .default_code;
-            debug!("Code: {}", code);
-            let inject_code = self
-                .config()?
-                .inject_code
-                .as_ref()
-                .and_then(|c| c.get(&problem.lang));
-            debug!("InjectCode: {:#?}", inject_code);
-            if let Some(inject_code) = inject_code {
-                self.write_code_fragment(
-                    &mut buf,
-                    single_comment,
-                    inject_code.before_code_exclude.as_ref(),
-                    InjectPosition::BeforeCodeExclude,
-                )?;
-            }
-            buf.push_str(&pattern_code);
-            if let Some(inject_code) = inject_code {
-                self.write_code_fragment(
-                    &mut buf,
-                    single_comment,
-                    inject_code.before_code.as_ref(),
-                    InjectPosition::BeforeCode,
-                )?;
-            }
-            buf.push('\n');
-            buf.push_str(code);
-            buf.push_str(&pattern_code);
-            if let Some(inject_code) = inject_code {
-                self.write_code_fragment(
-                    &mut buf,
-                    single_comment,
-                    inject_code.after_code.as_ref(),
-                    InjectPosition::AfterCode,
-                )?;
-            }
-
-            self.pick_hook(&buf, &problem, &lang)?;
-        }
-
-        Ok(())
-    }
-}
-
 #[async_trait]
 impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     fn session(&self) -> Option<&Session> {
@@ -660,36 +191,6 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .await?;
         debug!("Response: {}", response);
 
-        let mut definition = None;
-        let mut start_comment = "";
-        let line_comment;
-        let mut end_comment = "";
-        let single_comment;
-
-        // TODO should have Single and Multiline comment available?
-        match &lang.comment {
-            Comment::C(CommentStyle::Single(s), multi) => {
-                single_comment = s;
-                if let Some(CommentStyle::Multiline {
-                        start,
-                        between,
-                        end,
-                }) = multi {
-                    start_comment = start.as_str();
-                    line_comment = between.as_str();
-                    end_comment = end.as_str();
-                } else {
-                    line_comment = single_comment;
-                }
-            }
-            Comment::Python3(CommentStyle::Single(s), _) |
-            Comment::MySQL(CommentStyle::Single(s), _) => {
-                line_comment = s;
-                single_comment = s;
-            },
-            _ => unreachable!(),
-        };
-
         self.generate_problem_stub(&lang, &problem, problem_id, slug, &response)?;
 
         Ok(())
@@ -707,16 +208,28 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         });
         let url = &self.config()?.urls.test;
         debug!("problem_test url: {}, {:?}", url, body);
-        let response = self.run_code(url, &problem, body).await?;
+        let response = self.run_code(url, &problem, body).await;
         debug!("problem_test response: {:?}", response);
-        let url = self.config.urls.verify.replace(
-            "$id",
-            response["interpret_id"]
-                .as_str()
-                .ok_or_else(|| LeetUpError::Any(anyhow!("Unable to replace `interpret_id`")))?,
-        );
-        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
-        self.print_judge_result(Some(test_data), result)
+
+        match response {
+            Err(e) => {
+                println!("\n\n{}", Color::Red(e.to_string().as_str()).make());
+                println!("\n{}", Color::Yellow("Note: If error status is 4XX, make sure you are logged in!").make());
+            },
+            Ok(json) => {
+
+                let url = self.config.urls.verify.replace(
+                    "$id",
+                    json["interpret_id"]
+                        .as_str()
+                        .ok_or_else(|| LeetUpError::Any(anyhow!("Unable to replace `interpret_id`")))?,
+                );
+                let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
+                self.print_judge_result(Some(test_data), result)?;
+            }
+        }
+
+        Ok(())
     }
 
     async fn problem_submit(&self, submit: cmd::Submit) -> Result<()> {
@@ -785,5 +298,475 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     fn name(&self) -> &'a str {
         self.name
+    }
+}
+
+impl<'a> Leetcode<'a> {
+    pub fn new(session: Option<&'a Session>, config: &'a Config, cache: KvStore) -> Result<Self> {
+        let name = "leetcode";
+
+        Ok(Leetcode {
+            session,
+            config,
+            cache,
+            name,
+            remote_client: RemoteClient::new(config, session),
+        })
+    }
+
+    fn cache_session(&mut self, session: Session) -> Result<()> {
+        let session_str = serde_json::to_string(&session)?;
+        self.cache.set(CacheKey::Session.into(), session_str)?;
+        // remove key `problems`, rebuild problems cache.
+        //
+        // NOTE: cache.remove throws "Key not found" error
+        // so ignore that error if it is thrown.
+        if self.cache.remove(CacheKey::Problems.into()).is_err() {}
+        Ok(())
+    }
+
+    pub async fn fetch_problems(&mut self) -> Result<Vec<StatStatusPair>> {
+        let problems = self.fetch_all_problems().await?;
+        let problems: Vec<StatStatusPair> =
+            serde_json::from_value(problems["stat_status_pairs"].clone())?;
+
+        Ok(problems)
+    }
+
+    async fn run_code(
+        &self,
+        url: &str,
+        problem: &Problem,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let url = url.replace("$slug", &problem.slug);
+        self.remote_client
+            .post(&url, &body, || {
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    header::REFERER,
+                    HeaderValue::from_str(&problem.link).expect("Link is required!"),
+                );
+                Some(headers)
+            })
+            .await
+    }
+
+    async fn verify_run_code(&self, url: &str) -> Result<Value> {
+        loop {
+            let response = self
+                .remote_client
+                .get(url, None, self.session())
+                .await?
+                .json::<Value>()
+                .await?;
+            if response["state"] == "SUCCESS" {
+                return Ok(response);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
+
+    fn write_code_fragment(
+        &self,
+        buf: &mut String,
+        comment: &str,
+        code_fragment: Option<&Either>,
+        pos: InjectPosition,
+    ) -> Result<()> {
+        if let Some(either) = code_fragment {
+            let inject_code_pos_pattern = format!(
+                "\n{} {}\n",
+                comment,
+                Pattern::InjectCodePosition(pos).to_string()
+            );
+            buf.push_str(&inject_code_pos_pattern);
+            let code_fragment = either.to_string();
+            buf.push_str(&code_fragment);
+            buf.push_str(&inject_code_pos_pattern);
+        }
+        Ok(())
+    }
+
+    fn logout(&mut self) -> Result<()> {
+        if self.cache.remove(CacheKey::Session.into()).is_err() {
+            println!("User not logged in!");
+            return Ok(());
+        }
+        if self.cache.remove(CacheKey::Problems.into()).is_err() {}
+        Ok(())
+    }
+
+    fn execute_script(&self, cmd: &str, problem: &Problem, dir: &Path) -> Result<()> {
+        let dir_str = dir.to_str().expect("Expected a valid directory");
+        let cmd = cmd.replace(&Pattern::WorkingDir.to_string(), dir_str);
+        let cmd = cmd.replace(&Pattern::Problem.to_string(), &problem.slug);
+        std::process::Command::new("sh")
+            .args(["-c", &cmd])
+            .spawn()?
+            .wait()?;
+        Ok(())
+    }
+
+    fn pick_hook(&self, content: &str, problem: &Problem, lang: &LangInfo) -> Result<()> {
+        let mut curr_dir = env::current_dir()?;
+        let mut filename = curr_dir.clone();
+        let cfg = self.config()?;
+        if let Some(ref cfg) = cfg.pick_hook {
+            if let Some(hook_cfg) = cfg.get(&lang.name) {
+                if let Some(dir) = hook_cfg.working_dir() {
+                    let dir = shellexpand::tilde(dir);
+                    curr_dir = PathBuf::from(dir.deref());
+                    fs::create_dir_all(&curr_dir)?;
+                    filename = curr_dir.clone();
+                }
+                if let Some(pre) = hook_cfg.script_pre_generation() {
+                    println!(
+                        "{}",
+                        Color::Cyan("Executing pre-generation script...").make()
+                    );
+                    let cmd = pre.to_string();
+                    self.execute_script(&cmd, problem, &curr_dir)?;
+                }
+                self.write_content(&mut filename, problem, lang, content.as_bytes())?;
+
+                if let Some(post) = hook_cfg.script_post_generation() {
+                    println!(
+                        "{}",
+                        Color::Cyan("Executing post-generation script...").make()
+                    );
+                    let cmd = post.to_string();
+                    self.execute_script(&cmd, problem, &curr_dir)?;
+                }
+
+                // File path can be wrong if you used: `mkdir`, `cd`, `mv` to move
+                // around the generated file. Find the right path used in your script!
+                println!(
+                    "Generated: {}\n{}",
+                    Color::Magenta(filename.to_str().ok_or(LeetUpError::OptNone)?).make(),
+                    Color::Yellow("Note: File path can be wrong if you used: `mkdir`, `cd`, `mv` to move around the generated file. Find the right path used in your script!").make()
+                );
+                return Ok(());
+            }
+        }
+        self.write_content(&mut filename, problem, lang, content.as_bytes())?;
+        println!(
+            "Generated: {}",
+            Color::Magenta(filename.to_str().ok_or(LeetUpError::OptNone)?).make()
+        );
+
+        Ok(())
+    }
+
+    fn write_content(
+        &self,
+        filename: &mut PathBuf,
+        problem: &Problem,
+        lang: &LangInfo,
+        content: &[u8],
+    ) -> Result<()> {
+        filename.push(&problem.slug);
+        filename.set_extension(&lang.extension);
+
+        let mut file = File::create(&filename)?;
+        file.write_all(content)?;
+        Ok(())
+    }
+
+    fn print_judge_result(
+        &self,
+        test_data: Option<String>,
+        result: SubmissionResult,
+    ) -> Result<()> {
+        debug!("judge result: {:?}", result);
+        match result.status_code {
+            10 => {
+                // Accepted
+
+                // Test result
+                if result.expected_status_code.is_some() {
+                    println!(
+                        "{}",
+                        Color::Green(&format!(
+                            r#"
+ {} {}
+Input:
+{}
+
+Output:
+{}
+
+Expected:
+{}
+                    "#,
+                            Icon::Yes.to_string(),
+                            result.status_msg,
+                            test_data.ok_or(LeetUpError::OptNone)?,
+                            result
+                                .code_answer
+                                .expect("Code answer required!")
+                                .to_string(),
+                            result
+                                .expected_code_answer
+                                .expect("Expected code answer required!")
+                                .to_string(),
+                        ))
+                            .make()
+                    );
+                } else {
+                    println!(
+                        "{}",
+                        Color::Green(&format!(
+                            r#"
+ {} {}
+ {}/{} cases passed ({})
+ Your runtime beats {}% of {} submissions
+ Your memory usage beats {}% of {} submissions ({})
+                    "#,
+                            Icon::Yes.to_string(),
+                            result.status_msg,
+                            result.total_correct.unwrap_or(0),
+                            result.total_testcases.unwrap_or(0),
+                            result.status_runtime,
+                            result.runtime_percentile.unwrap_or(0.0),
+                            result.lang,
+                            result.memory_percentile.unwrap_or(0.0),
+                            result.lang,
+                            result.status_memory
+                        ))
+                            .make()
+                    );
+                }
+            }
+            15 => {
+                // Runtime error
+                println!(
+                    "{}",
+                    Color::Red(&format!(
+                        r#"
+ {} {}
+Input:
+{}
+
+Output:
+{}
+
+Expected:
+{}
+                    "#,
+                        Icon::_No.to_string(),
+                        result.status_msg,
+                        test_data.unwrap_or_default(),
+                        result
+                            .code_output
+                            .unwrap_or_else(|| Either::String("".to_string()))
+                            .to_string(),
+                        result
+                            .code_answer
+                            .unwrap_or(Either::String("".to_string()))
+                            .to_string()
+                    ))
+                        .make()
+                );
+            }
+            20 => {
+                // Compile Error
+                println!(
+                    "{}",
+                    Color::Red(&format!(
+                        "\n {} {}\n {}",
+                        Icon::_No.to_string(),
+                        result.status_msg,
+                        result
+                            .full_compile_error
+                            .ok_or_else(|| "Failed to get compilation error!")
+                            .map_err(anyhow::Error::msg)?
+                    ))
+                        .make()
+                );
+            }
+            _ => {
+                // Wrong Answer | TimeLimitExceeded
+                println!(
+                    "{}",
+                    Color::Red(&format!(
+                        r#"
+ {} {}
+ {}/{} cases passed ({})
+ Failed Test: {}
+                    "#,
+                        Icon::_No.to_string(),
+                        result.status_msg,
+                        result.total_correct.unwrap_or(0),
+                        result.total_testcases.unwrap_or(0),
+                        result.status_runtime,
+                        result
+                            .code_output
+                            .unwrap_or_else(|| Either::String("[Empty]".to_string()))
+                            .to_string()
+                    ))
+                        .make()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    async fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
+        let query = r#"
+            query getTopicTag($slug: String!) {
+                 topicTag(slug: $slug) {
+                   name
+                   slug
+                   questions {
+                     difficulty
+                     isPaidOnly
+                     title
+                     titleSlug
+                     questionFrontendId
+                     status
+                   }
+                 }
+             }
+        "#;
+        let body: serde_json::Value = json!({
+            "operationName": "getTopicTag",
+            "variables": {
+                "slug": tag,
+            },
+            "query": query
+        });
+
+        self.remote_client
+            .post(&self.config.urls.graphql, &body, || None)
+            .await
+    }
+
+    fn generate_problem_stub(
+        &mut self,
+        lang: &LangInfo,
+        problem: &Problem,
+        problem_id: usize,
+        slug: String,
+        response: &Value,
+    ) -> Result<()> {
+        let mut definition = None;
+        let mut start_comment = "";
+        let line_comment;
+        let mut end_comment = "";
+        let single_comment;
+
+        match &lang.comment {
+            Comment::C(CommentStyle::Single(s), multi) => {
+                single_comment = s;
+                if let Some(CommentStyle::Multiline {
+                                start,
+                                between,
+                                end,
+                            }) = multi {
+                    start_comment = start.as_str();
+                    line_comment = between.as_str();
+                    end_comment = end.as_str();
+                } else {
+                    line_comment = single_comment;
+                }
+            }
+            Comment::Python3(CommentStyle::Single(s), _) |
+            Comment::MySQL(CommentStyle::Single(s), _) => {
+                line_comment = s;
+                single_comment = s;
+            },
+            _ => unreachable!(),
+        };
+
+        if let Some(content) = &response["data"]["question"]["content"].as_str() {
+            let content = from_read(content.as_bytes(), 80);
+            let content = content.replace("**", "");
+            let content = content
+                .split('\n')
+                .map(|s| format!("{} {}", line_comment, s))
+                .collect::<Vec<String>>()
+                .join("\n");
+            info!("Single Comment: {}", single_comment);
+
+            let pattern_custom = format!("{} {}", single_comment, Pattern::CustomCode.to_string());
+            let pattern_leetup_info =
+                format!("{} {}", single_comment, Pattern::LeetUpInfo.to_string());
+            let content = format!(
+                "{}\n{} id={} lang={} slug={}\n\n{}\n{}\n{}\n{}",
+                pattern_custom,
+                pattern_leetup_info,
+                problem_id,
+                lang.name,
+                slug,
+                start_comment,
+                content,
+                end_comment,
+                pattern_custom
+            );
+            debug!("Content: {}", content);
+            definition = Some(content);
+        }
+
+        let mut filename = env::current_dir()?;
+        filename.push(slug);
+        filename.set_extension(&lang.extension);
+
+        if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
+            let mut buf = String::new();
+            let code_defs: Vec<(String, CodeDefinition)> =
+                serde_json::from_str::<Vec<CodeDefinition>>(code_defs)?
+                    .into_iter()
+                    .map(|def| (def.value.to_owned(), def))
+                    .collect();
+            let code_defs: HashMap<_, _> = code_defs.into_iter().collect();
+            if let Some(ref definition) = definition {
+                buf.push_str(definition)
+            }
+            let pattern_code = format!("\n{} {}\n", single_comment, Pattern::Code.to_string());
+            let code = &code_defs
+                .get(&lang.name)
+                .ok_or(LeetUpError::OptNone)?
+                .default_code;
+            debug!("Code: {}", code);
+            let inject_code = self
+                .config()?
+                .inject_code
+                .as_ref()
+                .and_then(|c| c.get(&problem.lang));
+            debug!("InjectCode: {:#?}", inject_code);
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut buf,
+                    single_comment,
+                    inject_code.before_code_exclude.as_ref(),
+                    InjectPosition::BeforeCodeExclude,
+                )?;
+            }
+            buf.push_str(&pattern_code);
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut buf,
+                    single_comment,
+                    inject_code.before_code.as_ref(),
+                    InjectPosition::BeforeCode,
+                )?;
+            }
+            buf.push('\n');
+            buf.push_str(code);
+            buf.push_str(&pattern_code);
+            if let Some(inject_code) = inject_code {
+                self.write_code_fragment(
+                    &mut buf,
+                    single_comment,
+                    inject_code.after_code.as_ref(),
+                    InjectPosition::AfterCode,
+                )?;
+            }
+
+            self.pick_hook(&buf, &problem, &lang)?;
+        }
+
+        Ok(())
     }
 }

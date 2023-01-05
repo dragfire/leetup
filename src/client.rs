@@ -52,11 +52,10 @@ impl<'a> RemoteClient<'_> {
                 .await
                 .map_err(|e| e.into())
         } else {
-            log::error!("{:#?}", res);
-            Err(LeetUpError::Any(anyhow!(format!(
+            Err(LeetUpError::Any(anyhow!(
                 "Status: {}",
                 res.status()
-            ))))
+            )))
         }
     }
 
