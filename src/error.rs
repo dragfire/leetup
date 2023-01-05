@@ -3,7 +3,7 @@ use thiserror::Error;
 
 /// Represent all LeetUp error
 #[derive(Error, Debug)]
-#[error("...")]
+#[error("{0}")]
 pub enum LeetUpError {
     /// Any Error
     Any(#[from] anyhow::Error),
