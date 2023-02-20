@@ -1,3 +1,5 @@
+> If you use neovim, try this Neovim plugin [leetup.nvim](https://github.com/dragfire/leetup.nvim)
+
 <h1 align="center">
 
 ![Rust](https://github.com/dragfire/leetup/workflows/Rust/badge.svg) [![Build Status](https://travis-ci.org/dragfire/leetup.svg?branch=master)](https://travis-ci.org/dragfire/leetup) [![crates](https://img.shields.io/crates/v/leetup.svg)](https://crates.io/crates/leetup) ![Downloads](https://img.shields.io/crates/d/leetup)
