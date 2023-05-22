@@ -1,3 +1,4 @@
+#![allow(dead_code, unused)]
 use leetup::{cmd, Result};
 
 #[tokio::main]

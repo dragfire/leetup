@@ -1,5 +1,6 @@
 use crate::{service::Session, Config, LeetUpError, Result};
 use anyhow::anyhow;
+use log::debug;
 use reqwest::{header, header::HeaderMap, header::HeaderValue, Client, Response};
 
 pub struct RemoteClient<'a> {
@@ -35,6 +36,7 @@ impl<'a> RemoteClient<'_> {
         F: FnOnce() -> Option<HeaderMap>,
     {
         let headers = self.headers_with_session(with_headers(), self.session);
+        debug!("Headers: {:#?}", headers);
         let client = Client::builder().default_headers(headers).build()?;
 
         let client = client
@@ -52,10 +54,7 @@ impl<'a> RemoteClient<'_> {
                 .await
                 .map_err(|e| e.into())
         } else {
-            Err(LeetUpError::Any(anyhow!(
-                "Status: {}",
-                res.status()
-            )))
+            Err(LeetUpError::Any(anyhow!("Status: {}", res.status())))
         }
     }
 
