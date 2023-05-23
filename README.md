@@ -23,8 +23,9 @@ Download from ![releases](https://github.com/dragfire/leetup/releases). Extract 
 > Note: You will need to add `leetup.exe` to PATH to access from Command Prompt.
 
 ## Quick Start:
-- Login using Github: `leetup user -g`
 - Login using Cookie: `leetup user -c`
+  - You need to login on leetcode.com first.
+  - Copy `csrftoken` and `LEETCODE_SESSION` from cookie storage in the browser.
 - Pick a problem: `leetup pick -l python 1`
 - Test a problem: `leetup test two-sum.py -t "[1,2]\n3"`
 - Submit a problem: `leetup submit two-sum.py`

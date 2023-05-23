@@ -261,34 +261,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     async fn process_auth(&mut self, user: User) -> Result<()> {
         // cookie login
-        if let Some(val) = user.cookie {
-            let cookie = val.unwrap_or_else(|| {
-                let mut cookie_value = String::new();
-                println!("Enter Cookie:");
-                std::io::stdin()
-                    .read_line(&mut cookie_value)
-                    .expect("Failed to read cookie from input");
-                cookie_value.trim_end().to_string()
-            });
-
-            // filter out all unnecessary cookies
-            let session = Session::from_str(&cookie)
-                .map_err(|_| LeetUpError::Any(anyhow!("Unable to parse cookie string")))?;
-            println!("\n{}", Color::Green("User logged in!").make());
+        if user.cookie.is_some() {
+            let session = auth::cookie_login(self).await?;
             self.cache_session(session)?;
-        }
-
-        // github login
-        if user.github.is_some() {
-            match auth::github_login(self).await {
-                Ok(session) => {
-                    println!("\n{}", Color::Green("User logged in!").make());
-                    self.cache_session(session)?;
-                }
-                Err(_) => {
-                    println!("\n{}", Color::Red("Github login failed!").make());
-                }
-            }
         }
 
         if user.logout.is_some() {
@@ -486,7 +461,7 @@ impl<'a> Leetcode<'a> {
         result: SubmissionResult,
     ) -> Result<()> {
         println!(
-            "\n{}\n",
+            "\n{}",
             Color::Magenta(&format!(
                 "\nInput:\n{}",
                 test_data.unwrap_or("".to_string())
