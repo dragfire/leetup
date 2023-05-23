@@ -198,6 +198,7 @@ pub async fn process() -> Result<()> {
     let mut cache = KvStore::open(&config_dir)?;
     let session = get_session(&mut cache)?;
     let config = get_config(config_dir);
+    debug!("Session: {:#?}", session);
 
     let mut provider = Leetcode::new(session.as_ref(), &config, cache)?;
 

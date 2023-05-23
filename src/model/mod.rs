@@ -232,6 +232,20 @@ pub struct SubmissionResult {
     pub total_testcases: Option<u32>,
 }
 
+impl SubmissionResult {
+    pub fn has_compile_error(&self) -> bool {
+        self.compile_error.is_some() || self.full_compile_error.is_some()
+    }
+
+    pub fn has_runtime_error(&self) -> bool {
+        self.status_msg.to_lowercase().contains("error")
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.total_correct.lt(&self.total_testcases)
+    }
+}
+
 impl ProblemInfo for StatStatusPair {
     fn question_id(&self) -> usize {
         self.stat.frontend_question_id

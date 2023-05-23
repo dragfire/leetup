@@ -5,8 +5,11 @@ use crate::model::{
 use crate::{
     client::RemoteClient,
     cmd::{self, List, OrderBy, Query, User},
-    icon::Icon,
-    service::{self, auth, CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session},
+    service::{
+        self, auth,
+        result_printer::{Printer, TestCaseResults},
+        CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session,
+    },
     template::{parse_code, InjectPosition, Pattern},
     Config, Either, LeetUpError, Result,
 };
@@ -214,17 +217,21 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
         match response {
             Err(e) => {
                 println!("\n\n{}", Color::Red(e.to_string().as_str()).make());
-                println!("\n{}", Color::Yellow("Note: If error status is 4XX, make sure you are logged in!").make());
-            },
+                println!(
+                    "\n{}",
+                    Color::Yellow("Note: If error status is 4XX, make sure you are logged in!")
+                        .make()
+                );
+            }
             Ok(json) => {
-
                 let url = self.config.urls.verify.replace(
                     "$id",
-                    json["interpret_id"]
-                        .as_str()
-                        .ok_or_else(|| LeetUpError::Any(anyhow!("Unable to replace `interpret_id`")))?,
+                    json["interpret_id"].as_str().ok_or_else(|| {
+                        LeetUpError::Any(anyhow!("Unable to replace `interpret_id`"))
+                    })?,
                 );
-                let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
+                let result: SubmissionResult =
+                    serde_json::from_value(self.verify_run_code(&url).await?)?;
                 self.print_judge_result(Some(test_data), result)?;
             }
         }
@@ -478,137 +485,16 @@ impl<'a> Leetcode<'a> {
         test_data: Option<String>,
         result: SubmissionResult,
     ) -> Result<()> {
-        debug!("judge result: {:?}", result);
-        match result.status_code {
-            10 => {
-                // Accepted
-
-                // Test result
-                if result.expected_status_code.is_some() {
-                    println!(
-                        "{}",
-                        Color::Green(&format!(
-                            r#"
- {} {}
-Input:
-{}
-
-Output:
-{}
-
-Expected:
-{}
-                    "#,
-                            Icon::Yes.to_string(),
-                            result.status_msg,
-                            test_data.ok_or(LeetUpError::OptNone)?,
-                            result
-                                .code_answer
-                                .expect("Code answer required!")
-                                .to_string(),
-                            result
-                                .expected_code_answer
-                                .expect("Expected code answer required!")
-                                .to_string(),
-                        ))
-                            .make()
-                    );
-                } else {
-                    println!(
-                        "{}",
-                        Color::Green(&format!(
-                            r#"
- {} {}
- {}/{} cases passed ({})
- Your runtime beats {}% of {} submissions
- Your memory usage beats {}% of {} submissions ({})
-                    "#,
-                            Icon::Yes.to_string(),
-                            result.status_msg,
-                            result.total_correct.unwrap_or(0),
-                            result.total_testcases.unwrap_or(0),
-                            result.status_runtime,
-                            result.runtime_percentile.unwrap_or(0.0),
-                            result.lang,
-                            result.memory_percentile.unwrap_or(0.0),
-                            result.lang,
-                            result.status_memory
-                        ))
-                            .make()
-                    );
-                }
-            }
-            15 => {
-                // Runtime error
-                println!(
-                    "{}",
-                    Color::Red(&format!(
-                        r#"
- {} {}
-Input:
-{}
-
-Output:
-{}
-
-Expected:
-{}
-                    "#,
-                        Icon::_No.to_string(),
-                        result.status_msg,
-                        test_data.unwrap_or_default(),
-                        result
-                            .code_output
-                            .unwrap_or_else(|| Either::String("".to_string()))
-                            .to_string(),
-                        result
-                            .code_answer
-                            .unwrap_or(Either::String("".to_string()))
-                            .to_string()
-                    ))
-                        .make()
-                );
-            }
-            20 => {
-                // Compile Error
-                println!(
-                    "{}",
-                    Color::Red(&format!(
-                        "\n {} {}\n {}",
-                        Icon::_No.to_string(),
-                        result.status_msg,
-                        result
-                            .full_compile_error
-                            .ok_or_else(|| "Failed to get compilation error!")
-                            .map_err(anyhow::Error::msg)?
-                    ))
-                        .make()
-                );
-            }
-            _ => {
-                // Wrong Answer | TimeLimitExceeded
-                println!(
-                    "{}",
-                    Color::Red(&format!(
-                        r#"
- {} {}
- {}/{} cases passed ({})
- Failed Test: {}
-                    "#,
-                        Icon::_No.to_string(),
-                        result.status_msg,
-                        result.total_correct.unwrap_or(0),
-                        result.total_testcases.unwrap_or(0),
-                        result.status_runtime,
-                        result
-                            .code_output
-                            .unwrap_or_else(|| Either::String("[Empty]".to_string()))
-                            .to_string()
-                    ))
-                        .make()
-                );
-            }
-        }
+        println!(
+            "\n{}\n",
+            Color::Magenta(&format!(
+                "\nInput:\n{}",
+                test_data.unwrap_or("".to_string())
+            ))
+            .make()
+        );
+        let results: TestCaseResults = result.into();
+        results.print();
         Ok(())
     }
 
@@ -660,10 +546,11 @@ Expected:
             Comment::C(CommentStyle::Single(s), multi) => {
                 single_comment = s;
                 if let Some(CommentStyle::Multiline {
-                                start,
-                                between,
-                                end,
-                            }) = multi {
+                    start,
+                    between,
+                    end,
+                }) = multi
+                {
                     start_comment = start.as_str();
                     line_comment = between.as_str();
                     end_comment = end.as_str();
@@ -671,11 +558,11 @@ Expected:
                     line_comment = single_comment;
                 }
             }
-            Comment::Python3(CommentStyle::Single(s), _) |
-            Comment::MySQL(CommentStyle::Single(s), _) => {
+            Comment::Python3(CommentStyle::Single(s), _)
+            | Comment::MySQL(CommentStyle::Single(s), _) => {
                 line_comment = s;
                 single_comment = s;
-            },
+            }
             _ => unreachable!(),
         };
 
