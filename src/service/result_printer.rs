@@ -76,7 +76,7 @@ impl TestCaseResults {
                     .submission_result
                     .full_compile_error
                     .to_owned()
-                    .unwrap_or("".to_string())
+                    .unwrap_or_default()
             )
             .make()
         );

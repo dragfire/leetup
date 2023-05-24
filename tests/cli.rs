@@ -1,26 +1,22 @@
+use std::process::Command;
+
 use assert_cmd::prelude::*;
 use predicates::str::contains;
-use std::process::Command;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs::File;
     use std::io::Read;
+
+    use super::*;
 
     #[test]
     fn cli_version() {
         Command::cargo_bin("leetup")
             .unwrap()
-            .args(&["-V"])
+            .args(["-V"])
             .assert()
             .stdout(contains(env!("CARGO_PKG_VERSION")));
-    }
-
-    #[test]
-    fn user() {
-        // TODO add test
-        assert!(true);
     }
 
     fn _get_id(problem: &str) -> usize {
@@ -35,14 +31,14 @@ mod tests {
     fn _list_problems() {
         let bytes: Vec<u8> = Command::cargo_bin("leetup")
             .unwrap()
-            .args(&["list", "-oi"])
+            .args(["list", "-oi"])
             .assert()
             .get_output()
             .stdout
             .clone();
         let result: Vec<String> = String::from_utf8(bytes)
             .unwrap()
-            .split("\n")
+            .split('\n')
             .map(String::from)
             .collect();
 
@@ -59,7 +55,7 @@ mod tests {
     fn pick_problem_lang_rust() {
         let bytes: Vec<u8> = Command::cargo_bin("leetup")
             .unwrap()
-            .args(&["pick", "1"])
+            .args(["pick", "1"])
             .assert()
             .get_output()
             .stdout
@@ -70,22 +66,10 @@ mod tests {
             .replace("Generated: ", "");
         let result = generated_path.trim_end();
 
-        let mut generated_file =  File::open(result).unwrap();
+        let mut generated_file = File::open(result).unwrap();
         let mut buffer = String::new();
         generated_file.read_to_string(&mut buffer).unwrap();
         assert!(buffer.contains("// @leetup=custom\n// @leetup=info id=1 lang=rust slug=two-sum"));
         assert!(buffer.contains("// @leetup=code\n"));
-    }
-
-    #[test]
-    fn test_problem() {
-        // TODO add test
-        assert!(true);
-    }
-
-    #[test]
-    fn submit_problem() {
-        // TODO add test
-        assert!(true);
     }
 }

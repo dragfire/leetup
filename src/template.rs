@@ -4,13 +4,15 @@ pub enum Pattern {
     CustomCode,
     Code,
     InjectCodePosition(InjectPosition),
-    Problem, // Problem name e.g. two-sum
+    Problem,
+    // Problem name e.g. two-sum
     WorkingDir,
 }
 
 #[derive(Copy, Clone)]
 pub enum InjectPosition {
-    BeforeCode, // Helpful for imports
+    BeforeCode,
+    // Helpful for imports
     BeforeCodeExclude,
     AfterCode,
     BeforeFunctionDefinition,
@@ -56,17 +58,17 @@ pub fn parse_code(code: &str) -> Option<String> {
     let code_pattern: String = Pattern::Code.into();
     let len = code_pattern.len();
 
-    let start_index = match code.find(&code_pattern) {
-        Some(index) => index + len,
-        None => 0,
-    };
+    let start_index = code
+        .find(&code_pattern)
+        .map(|index| index + len)
+        .unwrap_or(0);
 
     let code = code.get(start_index..)?;
 
     let end_index = match code.find(&code_pattern) {
         Some(index) => {
             let code = &code[..index];
-            let index = code.rfind("\n").unwrap();
+            let index = code.rfind('\n').unwrap();
             index + 1
         }
         None => code.len(),

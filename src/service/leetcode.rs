@@ -1,18 +1,11 @@
-use crate::model::{
-    CodeDefinition, Problem, ProblemInfo, ProblemInfoSeq, StatStatusPair, SubmissionResult,
-    TopicTagQuestion,
-};
-use crate::{
-    client::RemoteClient,
-    cmd::{self, List, OrderBy, Query, User},
-    service::{
-        self, auth,
-        result_printer::{Printer, TestCaseResults},
-        CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session,
-    },
-    template::{parse_code, InjectPosition, Pattern},
-    Config, Either, LeetUpError, Result,
-};
+use std::cmp::Ord;
+use std::collections::HashMap;
+use std::env;
+use std::fs::{self, File};
+use std::io::prelude::*;
+use std::ops::Deref;
+use std::path::{Path, PathBuf};
+
 use anyhow::anyhow;
 use async_trait::async_trait;
 use colci::Color;
@@ -21,14 +14,23 @@ use leetup_cache::kvstore::KvStore;
 use log::{debug, info};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde_json::{json, Value};
-use std::cmp::Ord;
-use std::collections::HashMap;
-use std::env;
-use std::fs::{self, File};
-use std::io::prelude::*;
-use std::ops::Deref;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+
+use crate::model::{
+    CodeDefinition, Problem, ProblemInfo, ProblemInfoSeq, StatStatusPair, SubmissionResult,
+    TopicTagQuestion,
+};
+use crate::template::parse_code;
+use crate::{
+    client::RemoteClient,
+    cmd::{self, List, OrderBy, Query, User},
+    service::{
+        self, auth,
+        result_printer::{Printer, TestCaseResults},
+        CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session,
+    },
+    template::{InjectPosition, Pattern},
+    Config, Either, LeetUpError, Result,
+};
 
 /// Leetcode holds all attributes required to implement ServiceProvider trait.
 pub struct Leetcode<'a> {
@@ -56,17 +58,17 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     fn config(&self) -> Result<&Config> {
-        Ok(&self.config)
+        Ok(self.config)
     }
 
     /// Fetch all problems
     ///
     /// Use cache wherever necessary
-    async fn fetch_all_problems(&mut self) -> Result<serde_json::value::Value> {
-        let problems_res: serde_json::value::Value;
+    async fn fetch_all_problems(&mut self) -> Result<Value> {
+        let problems_res: Value;
         if let Some(ref val) = self.cache.get(CacheKey::Problems.into())? {
             debug!("Fetching problems from cache...");
-            problems_res = serde_json::from_str::<serde_json::value::Value>(val)?;
+            problems_res = serde_json::from_str::<Value>(val)?;
         } else {
             let url = &self.config.urls.problems_all;
             let session = self.session();
@@ -74,7 +76,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 .remote_client
                 .get(url, None, session)
                 .await?
-                .json::<serde_json::value::Value>()
+                .json::<Value>()
                 .await
                 .map_err(LeetUpError::Reqwest)?;
             let res_serialized = serde_json::to_string(&problems_res)?;
@@ -180,7 +182,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                }
             }
         "#;
-        let body: serde_json::value::Value = json!({
+        let body: Value = json!({
             "query": query,
             "variables": json!({
                 "titleSlug": slug.to_owned(),
@@ -202,10 +204,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     async fn problem_test(&self, test: cmd::Test) -> Result<()> {
         let problem = service::extract_problem(test.filename)?;
         let test_data = test.test_data.replace("\\n", "\n");
+        let typed_code = parse_code(problem.typed_code.as_ref().expect("Expected typed_code"));
         let body = json!({
                 "lang":        problem.lang.to_owned(),
                 "question_id": problem.id,
-                "typed_code":  parse_code(problem.typed_code.as_ref().expect("Expected typed_code")),
+                "typed_code":  typed_code,
                 "data_input":  test_data,
                 "judge_type":  "large"
         });
@@ -315,12 +318,7 @@ impl<'a> Leetcode<'a> {
         Ok(problems)
     }
 
-    async fn run_code(
-        &self,
-        url: &str,
-        problem: &Problem,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value> {
+    async fn run_code(&self, url: &str, problem: &Problem, body: Value) -> Result<Value> {
         let url = url.replace("$slug", &problem.slug);
         self.remote_client
             .post(&url, &body, || {
@@ -462,18 +460,14 @@ impl<'a> Leetcode<'a> {
     ) -> Result<()> {
         println!(
             "\n{}",
-            Color::Magenta(&format!(
-                "\nInput:\n{}",
-                test_data.unwrap_or("".to_string())
-            ))
-            .make()
+            Color::Magenta(&format!("\nInput:\n{}", test_data.unwrap_or_default())).make()
         );
         let results: TestCaseResults = result.into();
         results.print();
         Ok(())
     }
 
-    async fn get_problems_with_topic_tag(&self, tag: &str) -> Result<serde_json::Value> {
+    async fn get_problems_with_topic_tag(&self, tag: &str) -> Result<Value> {
         let query = r#"
             query getTopicTag($slug: String!) {
                  topicTag(slug: $slug) {
@@ -490,7 +484,7 @@ impl<'a> Leetcode<'a> {
                  }
              }
         "#;
-        let body: serde_json::Value = json!({
+        let body: Value = json!({
             "operationName": "getTopicTag",
             "variables": {
                 "slug": tag,
@@ -576,12 +570,11 @@ impl<'a> Leetcode<'a> {
 
         if let Some(code_defs) = &response["data"]["question"]["codeDefinition"].as_str() {
             let mut buf = String::new();
-            let code_defs: Vec<(String, CodeDefinition)> =
-                serde_json::from_str::<Vec<CodeDefinition>>(code_defs)?
-                    .into_iter()
-                    .map(|def| (def.value.to_owned(), def))
-                    .collect();
-            let code_defs: HashMap<_, _> = code_defs.into_iter().collect();
+            let code_defs: HashMap<_, _> = serde_json::from_str::<Vec<CodeDefinition>>(code_defs)?
+                .into_iter()
+                .map(|def| (def.value.to_owned(), def))
+                .into_iter()
+                .collect();
             if let Some(ref definition) = definition {
                 buf.push_str(definition)
             }
@@ -626,7 +619,7 @@ impl<'a> Leetcode<'a> {
                 )?;
             }
 
-            self.pick_hook(&buf, &problem, &lang)?;
+            self.pick_hook(&buf, problem, lang)?;
         }
 
         Ok(())
