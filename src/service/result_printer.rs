@@ -1,6 +1,5 @@
 use colci::Color;
 use log::info;
-use std::fmt::format;
 
 use crate::{model::SubmissionResult, Either};
 
@@ -58,7 +57,7 @@ impl TestCaseResults {
         match (left, right) {
             (Some(Either::Sequence(vec1)), Some(Either::Sequence(vec2))) => {
                 let mut vec = vec2.clone();
-                if vec2.len() == 0 {
+                if vec2.is_empty() {
                     vec = std::iter::repeat("".to_string())
                         .take(vec1.len())
                         .collect::<Vec<_>>();
@@ -94,25 +93,17 @@ impl TestCaseResults {
         let memory_percentile = self
             .submission_result
             .memory_percentile
-            .clone()
             .unwrap_or(0.0)
             .to_string();
         let runtime_percentile = self
             .submission_result
             .runtime_percentile
-            .clone()
             .unwrap_or(0.0)
             .to_string();
         let testcases = format!(
             "{}/{}",
-            self.submission_result
-                .total_correct
-                .unwrap_or(0)
-                .to_string(),
-            self.submission_result
-                .total_testcases
-                .unwrap_or(0)
-                .to_string()
+            self.submission_result.total_correct.unwrap_or(0),
+            self.submission_result.total_testcases.unwrap_or(0)
         );
         let accepted_meta = format!(
             "{}: ({})",
@@ -147,7 +138,7 @@ impl Printer for TestCaseResults {
             return;
         }
 
-        if self.results.len() != 0 {
+        if !self.results.is_empty() {
             for (i, test_case_result) in self.results.iter().enumerate() {
                 println!("\nTest {}/{}", i + 1, self.results.len());
                 test_case_result.print();
