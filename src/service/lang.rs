@@ -1,8 +1,10 @@
 // TODO Add more Languages
 
-use crate::LeetUpError;
-use anyhow::anyhow;
 use std::str::FromStr;
+
+use anyhow::anyhow;
+
+use crate::LeetUpError;
 
 /// Store Lang attributes.
 #[derive(Debug, Clone)]
@@ -105,12 +107,12 @@ impl FromStr for Lang {
             "ruby" => Ok(Lang::Ruby(LangInfo {
                 name: "ruby".to_string(),
                 extension: "rb".to_string(),
-                comment: py_comment.clone(),
+                comment: py_comment,
             })),
             "rb" => Ok(Lang::Ruby(LangInfo {
                 name: "ruby".to_string(),
                 extension: "rb".to_string(),
-                comment: py_comment.clone(),
+                comment: py_comment,
             })),
             "c" => Ok(Lang::C(LangInfo {
                 name: "c".into(),

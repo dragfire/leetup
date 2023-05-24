@@ -1,11 +1,13 @@
-use crate::model::Problem;
-use crate::{template::Pattern, LeetUpError, Result};
-use log::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::str::FromStr;
+
+use log::*;
+
+use crate::model::Problem;
+use crate::{template::Pattern, LeetUpError, Result};
 
 impl FromStr for Problem {
     type Err = LeetUpError;
@@ -44,7 +46,7 @@ pub fn extract_problem<P: AsRef<Path>>(filename: P) -> Result<Problem> {
         .map(|i| i + pattern_leetup_info.len())
         .expect("LeetUpInfo is required.");
     let line = &typed_code[info_index..].trim();
-    let end_index = line.find("\n").expect("LeetupInfo needs a new line");
+    let end_index = line.find('\n').expect("LeetupInfo needs a new line");
     let line = &line[..end_index].trim();
     let mut problem = Problem::from_str(line)?;
     problem.typed_code = Some(typed_code);

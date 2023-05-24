@@ -1,3 +1,9 @@
+use std::cmp::Ordering;
+
+use ansi_term::Colour::{Green, Red, Yellow};
+use async_trait::async_trait;
+use leetup_cache::kvstore::KvStore;
+
 use crate::model::DifficultyType::{Easy, Hard, Medium};
 use crate::model::{DifficultyType, ProblemInfo};
 use crate::service::Session;
@@ -6,10 +12,6 @@ use crate::{
     icon::Icon,
     Config, Result,
 };
-use ansi_term::Colour::{Green, Red, Yellow};
-use async_trait::async_trait;
-use leetup_cache::kvstore::KvStore;
-use std::cmp::Ordering;
 
 /// ServiceProvider trait provides all the functionalities required to solve problems
 /// on any type of Online Judge through leetup CLI.

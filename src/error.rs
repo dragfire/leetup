@@ -1,4 +1,5 @@
 use std::io;
+
 use thiserror::Error;
 
 /// Represent all LeetUp error

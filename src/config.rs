@@ -1,9 +1,11 @@
-use crate::{LeetUpError, Result};
-use serde::{de::DeserializeOwned, Deserialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+
+use serde::{de::DeserializeOwned, Deserialize};
+
+use crate::{LeetUpError, Result};
 
 type LangInjectCode = HashMap<String, InjectCode>;
 type PickHookConfig = HashMap<String, PickHook>;
@@ -155,7 +157,7 @@ fn test_config() {
 
     let config: Config = Config::get(&file_path);
     assert!(config.inject_code.is_some());
-    assert!(config.urls.base.len() > 0);
+    assert!(!config.urls.base.is_empty());
     assert!(config.pick_hook.is_some());
     drop(file);
     data_dir.close().unwrap();

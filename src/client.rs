@@ -63,10 +63,7 @@ impl<'a> RemoteClient<'_> {
         headers_opt: Option<HeaderMap>,
         session: Option<&Session>,
     ) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        if let Some(h) = headers_opt {
-            headers = HeaderMap::from(h);
-        }
+        let mut headers = headers_opt.unwrap_or_default();
 
         if let Some(session) = session {
             let cookie: String = session.into();

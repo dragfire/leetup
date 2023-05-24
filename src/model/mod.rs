@@ -1,10 +1,13 @@
-use crate::{Either, LeetUpError};
+use std::cmp::Ordering;
+use std::str::FromStr;
+
 use ansi_term::Color::{Green, Red, Yellow};
 use serde::Deserialize;
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::cmp::Ordering;
-use std::str::FromStr;
+
 use DifficultyType::*;
+
+use crate::{Either, LeetUpError};
 
 #[derive(Debug)]
 pub struct Problem {
