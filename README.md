@@ -12,7 +12,9 @@
 
 ## Install
 - MacOs/Linux:
-Download from ![releases](https://github.com/dragfire/leetup/releases). Extract the zipped file and set the PATH.
+```sh
+brew install leetup
+```
 
 - Cargo:
 ```sh
