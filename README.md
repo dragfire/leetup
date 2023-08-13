@@ -16,13 +16,13 @@
 brew install leetup
 ```
 - Linux:  
-Download from ![releases](https://github.com/dragfire/leetup/releases). Extract the zipped file and set the PATH.
+Download from [releases](https://github.com/dragfire/leetup/releases). Extract the zipped file and set the PATH.
 - Cargo:
 ```sh
 cargo install leetup
 ```
 - Windows:  
-Download from ![releases](https://github.com/dragfire/leetup/releases). Extract the zipped x86_64 windows target file.
+Download from [releases](https://github.com/dragfire/leetup/releases). Extract the zipped x86_64 windows target file.
 > Note: You will need to add `leetup.exe` to PATH to access from Command Prompt.
 
 ## Quick Start:
@@ -36,7 +36,7 @@ Download from ![releases](https://github.com/dragfire/leetup/releases). Extract 
     - Search by keyword: `leetup list <keyword>`
     - Query easy: `leetup list -q e`
     - Order by Id, Title, Difficulty: `leetup list -qE -oIdT`  
-- ![More Commands](docs/usage.md)
+- [More Commands](docs/usage.md)
 
 ## Inject code fragments:
 You can inject pieces of code that you frequently use in certain positions of the generated code file. Example: Standard library imports for each language can be put into a config. `Leetup` will pick it up and insert into the generated file.  
