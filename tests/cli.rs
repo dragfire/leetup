@@ -60,7 +60,7 @@ mod tests {
             .get_output()
             .stdout
             .clone();
-        let stripped_output = strip_ansi_escapes::strip(bytes).unwrap();
+        let stripped_output = strip_ansi_escapes::strip(bytes);
         let generated_path = String::from_utf8(stripped_output)
             .unwrap()
             .replace("Generated: ", "");
