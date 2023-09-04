@@ -2,7 +2,7 @@ use std::cmp::Ord;
 use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File};
-use std::io::prelude::*;
+use std::io::{prelude::*, stdin};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
@@ -203,7 +203,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
 
     async fn problem_test(&self, test: cmd::Test) -> Result<()> {
         let problem = service::extract_problem(test.filename)?;
-        let test_data = test.test_data.replace("\\n", "\n");
+
+        let test_data = self.get_test_data(test.test_data);
+        debug!("Test data: {:?}", test_data);
         let typed_code = parse_code(problem.typed_code.as_ref().expect("Expected typed_code"));
         let body = json!({
                 "lang":        problem.lang.to_owned(),
@@ -623,5 +625,32 @@ impl<'a> Leetcode<'a> {
         }
 
         Ok(())
+    }
+
+    /*
+     * Parse Option<Option<String>> from structopt
+     *
+     * Get string from command line if provided, otherwise try to get string from stdin
+     *
+     * We can provide test data as multiline input using stdin.
+     *
+     * # Example:
+     * ```bash
+     * leetup test 3sum.java -t << END
+     * [1,-1,0]
+     * [0, 1, 1, 1, 2, -3, -1]
+     * [1,2,3]
+     * END
+     * ```
+     */
+    fn get_test_data(&self, test_data: Option<Option<String>>) -> String {
+        test_data.unwrap().unwrap_or_else(|| {
+            let mut buf = String::new();
+            stdin()
+                .lock()
+                .read_to_string(&mut buf)
+                .expect("test input expected from stdin");
+            buf
+        })
     }
 }
