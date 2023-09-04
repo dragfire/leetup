@@ -74,7 +74,7 @@ pub struct Test {
 
     /// Custom test cases.
     #[structopt(short)]
-    pub test_data: String,
+    pub test_data: Option<Option<String>>,
 }
 
 #[derive(Debug, StructOpt)]

@@ -1,6 +1,6 @@
 [package]
 name = "leetup"
-version = "1.2.1"
+version = "1.2.3"
 authors = ["dragfire <asem.devajit@gmail.com>"]
 edition = "2018"
 description = "Leetcode cli"
@@ -10,6 +10,9 @@ homepage = "https://github.com/dragfire/leetup"
 repository = "https://github.com/dragfire/leetup"
 keywords = ["cli", "leetcode"]
 categories = ["command-line-utilities"]
+exclude = [
+  "assets/*"
+]
 
 [dependencies]
 leetup-cache = { path = "./cache", version = "0.1.0"}
