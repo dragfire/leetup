@@ -30,7 +30,17 @@ Download from [releases](https://github.com/dragfire/leetup/releases). Extract t
   - You need to login on leetcode.com first.
   - Copy `csrftoken` and `LEETCODE_SESSION` from cookie storage in the browser.
 - Pick a problem: `leetup pick -l python 1`
-- Test a problem: `leetup test two-sum.py -t "[1,2]\n3"`
+- Test a problem:
+  `leetup test two-sum.py -t "[1,2]\n3"`
+  or redirect test data using stdin
+  ```
+  leetup test 3sum.java -t << END
+  [1,-1,0]
+  [0, 1, 1, 1, 2, -3, -1]
+  [1,2,3]
+  END
+  ```   
+       
 - Submit a problem: `leetup submit two-sum.py`
 - List/Show problems: `leetup list`
     - Search by keyword: `leetup list <keyword>`
