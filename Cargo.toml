@@ -16,7 +16,7 @@ exclude = [
 
 [dependencies]
 leetup-cache = { path = "./cache", version = "0.1.0"}
-clap = "2.33.1"
+clap = "4.4.2"
 structopt = "0.3.15"
 thiserror = "1.0.20"
 anyhow = "1.0.31"
