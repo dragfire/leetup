@@ -11,6 +11,22 @@ pub struct TestExecutionResult {
 
 impl Printer for TestExecutionResult {}
 
+impl ExecutionResultPrinter for TestExecutionResult {
+    fn is_error(&self) -> bool {
+        self.submission_result.has_compile_error()
+            || self.submission_result.has_runtime_error()
+            || self.submission_result.has_error()
+    }
+
+    fn buffer(&self) -> String {
+        if self.is_error() {
+            self.error_buffer()
+        } else {
+            self.success_buffer()
+        }
+    }
+}
+
 impl TestExecutionResult {
     pub fn new(test_data: Either, submission_result: SubmissionResult) -> Self {
         Self {
@@ -20,23 +36,25 @@ impl TestExecutionResult {
     }
 
     fn error_buffer(&self) -> String {
-        let error_buffer =
-            self.get_runtime_error() + NEW_LINE + NEW_LINE + self.get_compile_error().as_str();
+        let error_buffer = self.runtime_error_buffer()
+            + NEW_LINE
+            + NEW_LINE
+            + self.compile_error_buffer().as_str();
         if error_buffer.trim().is_empty() {
-            self.get_wrong_answer()
+            self.wrong_answer_buffer()
         } else {
             error_buffer
         }
     }
 
-    fn get_runtime_error(&self) -> String {
+    fn runtime_error_buffer(&self) -> String {
         if !self.submission_result.has_runtime_error() {
             return NEW_LINE.to_owned();
         }
         self.submission_result.status_msg.to_owned()
     }
 
-    fn get_compile_error(&self) -> String {
+    fn compile_error_buffer(&self) -> String {
         if !self.submission_result.has_compile_error() {
             return NEW_LINE.to_owned();
         }
@@ -46,7 +64,7 @@ impl TestExecutionResult {
             .unwrap_or_default()
     }
 
-    fn get_wrong_answer(&self) -> String {
+    fn wrong_answer_buffer(&self) -> String {
         let mut buffer = String::new();
         buffer.push_str(&self.bold_text(
             &Color::Red(&format!("\n{} Wrong Answer:\n\n", Icon::_No.to_string())).make(),
@@ -94,7 +112,7 @@ impl TestExecutionResult {
         buffer
     }
 
-    fn success(&self) -> String {
+    fn success_buffer(&self) -> String {
         let mut buffer = String::new();
         buffer.push_str(
             &self.bold_text(
@@ -138,22 +156,6 @@ impl TestExecutionResult {
         ];
 
         metas.join("\n")
-    }
-}
-
-impl ExecutionResultPrinter for TestExecutionResult {
-    fn is_error(&self) -> bool {
-        self.submission_result.has_compile_error()
-            || self.submission_result.has_runtime_error()
-            || self.submission_result.has_error()
-    }
-
-    fn buffer(&self) -> String {
-        if self.is_error() {
-            self.error_buffer()
-        } else {
-            self.success()
-        }
     }
 }
 
