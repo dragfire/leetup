@@ -1,23 +1,7 @@
 use colci::Color;
-use log::debug;
 
+use crate::printer::{ExecutionResultPrinter, Printer, NEW_LINE};
 use crate::{icon::Icon, model::SubmissionResult, Either};
-
-const NEW_LINE: &'static str = "\n";
-const TEXT_BOLD_ON: &'static str = "\x1b[1m";
-const TEXT_BOLD_OFF: &'static str = "\x1b[m";
-
-pub trait Printer: ExecutionResultPrinter {
-    fn print(&self) {
-        print!("{}", self.buffer());
-    }
-}
-
-pub trait ExecutionResultPrinter {
-    fn is_error(&self) -> bool;
-
-    fn buffer(&self) -> String;
-}
 
 #[derive(Debug)]
 pub struct TestExecutionResult {
@@ -64,7 +48,7 @@ impl TestExecutionResult {
 
     fn get_wrong_answer(&self) -> String {
         let mut buffer = String::new();
-        buffer.push_str(&bold_text(
+        buffer.push_str(&self.bold_text(
             &Color::Red(&format!("\n{} Wrong Answer:\n\n", Icon::_No.to_string())).make(),
         ));
         buffer.push_str(&self.test_cases_buffer());
@@ -112,9 +96,11 @@ impl TestExecutionResult {
 
     fn success(&self) -> String {
         let mut buffer = String::new();
-        buffer.push_str(&bold_text(
-            &Color::Green(&format!("{} Accepted:\n\n", Icon::Yes.to_string())).make(),
-        ));
+        buffer.push_str(
+            &self.bold_text(
+                &Color::Green(&format!("{} Accepted:\n\n", Icon::Yes.to_string())).make(),
+            ),
+        );
         buffer.push_str(&self.test_cases_buffer());
         buffer.push_str(&Color::Green(&self.get_metas()).make());
 
@@ -171,12 +157,8 @@ impl ExecutionResultPrinter for TestExecutionResult {
     }
 }
 
-fn bold_text(s: &str) -> String {
-    format!("{}{}{}", s, TEXT_BOLD_ON, TEXT_BOLD_OFF)
-}
-
 #[cfg(test)]
-mod printer {
+mod tests {
     use super::{Printer, TestExecutionResult};
     use crate::{model::SubmissionResult, Either};
     use serde_json::from_value;

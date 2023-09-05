@@ -23,11 +23,8 @@ use crate::template::parse_code;
 use crate::{
     client::RemoteClient,
     cmd::{self, List, OrderBy, Query, User},
-    service::{
-        self, auth,
-        result_printer::{Printer, TestExecutionResult},
-        CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session,
-    },
+    printer::{Printer, TestExecutionResult},
+    service::{self, auth, CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session},
     template::{InjectPosition, Pattern},
     Config, Either, LeetUpError, Result,
 };
