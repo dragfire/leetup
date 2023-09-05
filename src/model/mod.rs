@@ -207,9 +207,17 @@ pub struct CodeDefinition {
 
 #[derive(Deserialize, Debug)]
 pub struct SubmissionResult {
+    pub state: Option<String>,
+    pub input: Option<Either>,
+    pub input_formatted: Option<Either>,
     pub code_output: Option<Either>,
+    pub std_output: Option<Either>,
+    pub last_test_case: Option<Either>,
+    pub correct_answer: Option<bool>,
     pub code_answer: Option<Either>,
+    pub expected_output: Option<Either>,
     pub expected_code_output: Option<Either>,
+    pub expected_answer: Option<Either>,
     pub expected_code_answer: Option<Either>,
     pub compare_result: Option<String>,
     pub compile_error: Option<String>,
@@ -236,7 +244,10 @@ impl SubmissionResult {
     }
 
     pub fn has_runtime_error(&self) -> bool {
-        self.status_msg.to_lowercase().contains("error")
+        let tle = "time limit exceeded";
+        let msg = self.status_msg.to_lowercase();
+
+        msg.eq(tle) || msg.contains("error")
     }
 
     pub fn has_error(&self) -> bool {

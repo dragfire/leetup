@@ -68,6 +68,17 @@ pub enum Either {
     String(String),
 }
 
+impl From<String> for Either {
+    fn from(s: String) -> Self {
+        let split: Vec<String> = s.trim().split("\n").map(|st| st.to_owned()).collect();
+        if split.is_empty() {
+            Either::String(s.to_owned())
+        } else {
+            Either::Sequence(split)
+        }
+    }
+}
+
 impl ToString for Either {
     fn to_string(&self) -> String {
         match self {

@@ -25,7 +25,7 @@ use crate::{
     cmd::{self, List, OrderBy, Query, User},
     service::{
         self, auth,
-        result_printer::{Printer, TestCaseResults},
+        result_printer::{Printer, TestExecutionResult},
         CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session,
     },
     template::{InjectPosition, Pattern},
@@ -237,7 +237,9 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                 );
                 let result: SubmissionResult =
                     serde_json::from_value(self.verify_run_code(&url).await?)?;
-                self.print_judge_result(Some(test_data), result)?;
+                print!("\n");
+                let execution_result = TestExecutionResult::new(test_data.into(), result);
+                execution_result.print();
             }
         }
 
@@ -261,7 +263,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .verify
             .replace("$id", &response["submission_id"].to_string());
         let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
-        self.print_judge_result(None, result)
+        todo!("call print for submit")
     }
 
     async fn process_auth(&mut self, user: User) -> Result<()> {
@@ -452,20 +454,6 @@ impl<'a> Leetcode<'a> {
 
         let mut file = File::create(&filename)?;
         file.write_all(content)?;
-        Ok(())
-    }
-
-    fn print_judge_result(
-        &self,
-        test_data: Option<String>,
-        result: SubmissionResult,
-    ) -> Result<()> {
-        println!(
-            "\n{}",
-            Color::Magenta(&format!("\nInput:\n{}", test_data.unwrap_or_default())).make()
-        );
-        let results: TestCaseResults = result.into();
-        results.print();
         Ok(())
     }
 
