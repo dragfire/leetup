@@ -1,6 +1,6 @@
 use colci::Color;
 
-use crate::printer::{ExecutionResultPrinter, Printer, NEW_LINE};
+use crate::printer::{decorator::bold_text, ExecutionResultPrinter, Printer, NEW_LINE};
 use crate::{icon::Icon, model::SubmissionResult, Either};
 
 #[derive(Debug)]
@@ -66,7 +66,7 @@ impl TestExecutionResult {
 
     fn wrong_answer_buffer(&self) -> String {
         let mut buffer = String::new();
-        buffer.push_str(&self.bold_text(
+        buffer.push_str(&bold_text(
             &Color::Red(&format!("\n{} Wrong Answer:\n\n", Icon::_No.to_string())).make(),
         ));
         buffer.push_str(&self.test_cases_buffer());
@@ -114,11 +114,9 @@ impl TestExecutionResult {
 
     fn success_buffer(&self) -> String {
         let mut buffer = String::new();
-        buffer.push_str(
-            &self.bold_text(
-                &Color::Green(&format!("{} Accepted:\n\n", Icon::Yes.to_string())).make(),
-            ),
-        );
+        buffer.push_str(&bold_text(
+            &Color::Green(&format!("{} Accepted:\n\n", Icon::Yes.to_string())).make(),
+        ));
         buffer.push_str(&self.test_cases_buffer());
         buffer.push_str(&Color::Green(&self.get_metas()).make());
 

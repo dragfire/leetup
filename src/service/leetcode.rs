@@ -259,7 +259,7 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .urls
             .verify
             .replace("$id", &response["submission_id"].to_string());
-        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
+        let _result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
         todo!("call print for submit")
     }
 
