@@ -16,9 +16,10 @@ use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde_json::{json, Value};
 
 use crate::model::{
-    CodeDefinition, Problem, ProblemInfo, ProblemInfoSeq, StatStatusPair, SubmissionResult,
+    CodeDefinition, Problem, ProblemInfo, ProblemInfoSeq, StatStatusPair, SubmissionResponse,
     TopicTagQuestion,
 };
+use crate::printer::SubmitExecutionResult;
 use crate::template::parse_code;
 use crate::{
     client::RemoteClient,
@@ -232,9 +233,8 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                         LeetUpError::Any(anyhow!("Unable to replace `interpret_id`"))
                     })?,
                 );
-                let result: SubmissionResult =
+                let result: SubmissionResponse =
                     serde_json::from_value(self.verify_run_code(&url).await?)?;
-                print!("\n");
                 let execution_result = TestExecutionResult::new(test_data.into(), result);
                 execution_result.print();
             }
@@ -259,8 +259,10 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .urls
             .verify
             .replace("$id", &response["submission_id"].to_string());
-        let _result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
-        todo!("call print for submit")
+        let result: SubmissionResponse = serde_json::from_value(self.verify_run_code(&url).await?)?;
+        let execution_result = SubmitExecutionResult::new(result);
+        execution_result.print();
+        Ok(())
     }
 
     async fn process_auth(&mut self, user: User) -> Result<()> {

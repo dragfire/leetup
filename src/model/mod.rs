@@ -206,7 +206,7 @@ pub struct CodeDefinition {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct SubmissionResult {
+pub struct SubmissionResponse {
     pub state: Option<String>,
     pub input: Option<Either>,
     pub input_formatted: Option<Either>,
@@ -226,7 +226,6 @@ pub struct SubmissionResult {
     pub memory: Option<u32>,
     pub memory_percentile: Option<f32>,
     pub pretty_lang: String,
-    pub question_id: Option<u32>,
     pub run_success: bool,
     pub runtime_percentile: Option<f32>,
     pub expected_status_code: Option<u32>,
@@ -238,19 +237,31 @@ pub struct SubmissionResult {
     pub total_testcases: Option<u32>,
 }
 
-impl SubmissionResult {
-    pub fn has_compile_error(&self) -> bool {
+pub trait ExecutionErrorResponse {
+    fn has_compile_error(&self) -> bool;
+
+    fn has_runtime_error(&self) -> bool;
+
+    fn has_error(&self) -> bool;
+
+    fn is_error(&self) -> bool {
+        self.has_compile_error() || self.has_runtime_error() || self.has_error()
+    }
+}
+
+impl ExecutionErrorResponse for SubmissionResponse {
+    fn has_compile_error(&self) -> bool {
         self.compile_error.is_some() || self.full_compile_error.is_some()
     }
 
-    pub fn has_runtime_error(&self) -> bool {
+    fn has_runtime_error(&self) -> bool {
         let tle = "time limit exceeded";
         let msg = self.status_msg.to_lowercase();
 
         msg.eq(tle) || msg.contains("error")
     }
 
-    pub fn has_error(&self) -> bool {
+    fn has_error(&self) -> bool {
         self.total_correct.lt(&self.total_testcases)
     }
 }
