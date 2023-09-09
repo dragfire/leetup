@@ -10,5 +10,4 @@ mod lang;
 pub mod leetcode;
 mod pool;
 mod provider;
-mod result_printer;
 mod session;

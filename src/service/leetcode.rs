@@ -16,18 +16,16 @@ use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde_json::{json, Value};
 
 use crate::model::{
-    CodeDefinition, Problem, ProblemInfo, ProblemInfoSeq, StatStatusPair, SubmissionResult,
+    CodeDefinition, Problem, ProblemInfo, ProblemInfoSeq, StatStatusPair, SubmissionResponse,
     TopicTagQuestion,
 };
+use crate::printer::SubmitExecutionResult;
 use crate::template::parse_code;
 use crate::{
     client::RemoteClient,
     cmd::{self, List, OrderBy, Query, User},
-    service::{
-        self, auth,
-        result_printer::{Printer, TestCaseResults},
-        CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session,
-    },
+    printer::{Printer, TestExecutionResult},
+    service::{self, auth, CacheKey, Comment, CommentStyle, LangInfo, ServiceProvider, Session},
     template::{InjectPosition, Pattern},
     Config, Either, LeetUpError, Result,
 };
@@ -235,9 +233,10 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
                         LeetUpError::Any(anyhow!("Unable to replace `interpret_id`"))
                     })?,
                 );
-                let result: SubmissionResult =
+                let result: SubmissionResponse =
                     serde_json::from_value(self.verify_run_code(&url).await?)?;
-                self.print_judge_result(Some(test_data), result)?;
+                let execution_result = TestExecutionResult::new(test_data.into(), result);
+                execution_result.print();
             }
         }
 
@@ -260,8 +259,10 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
             .urls
             .verify
             .replace("$id", &response["submission_id"].to_string());
-        let result: SubmissionResult = serde_json::from_value(self.verify_run_code(&url).await?)?;
-        self.print_judge_result(None, result)
+        let result: SubmissionResponse = serde_json::from_value(self.verify_run_code(&url).await?)?;
+        let execution_result = SubmitExecutionResult::new(result);
+        execution_result.print();
+        Ok(())
     }
 
     async fn process_auth(&mut self, user: User) -> Result<()> {
@@ -452,20 +453,6 @@ impl<'a> Leetcode<'a> {
 
         let mut file = File::create(&filename)?;
         file.write_all(content)?;
-        Ok(())
-    }
-
-    fn print_judge_result(
-        &self,
-        test_data: Option<String>,
-        result: SubmissionResult,
-    ) -> Result<()> {
-        println!(
-            "\n{}",
-            Color::Magenta(&format!("\nInput:\n{}", test_data.unwrap_or_default())).make()
-        );
-        let results: TestCaseResults = result.into();
-        results.print();
         Ok(())
     }
 
