@@ -3,6 +3,7 @@ use std::io::Read;
 use std::path::Path;
 use std::{collections::HashMap, str::FromStr};
 
+use log::warn;
 use serde::{de::DeserializeOwned, Deserialize};
 
 use crate::{service::Lang, LeetUpError, Result};
@@ -46,7 +47,7 @@ impl Config {
                 c
             }
             Err(e) => {
-                print!("{:#?}", e);
+                warn!("{:#?}", e);
                 Config {
                     urls,
                     inject_code: None,
@@ -176,6 +177,7 @@ fn test_config() {
     assert!(config.inject_code.is_some());
     assert!(!config.urls.base.is_empty());
     assert!(config.pick_hook.is_some());
+    assert!(matches!(config.lang, Lang::Java(..)));
     drop(file);
     data_dir.close().unwrap();
 }
