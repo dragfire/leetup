@@ -2,7 +2,7 @@
 
 <h1 align="center">
 
-[![crates](https://img.shields.io/crates/v/leetup.svg)](https://crates.io/crates/leetup) ![Downloads](https://img.shields.io/crates/d/leetup)
+[![crates](https://img.shields.io/crates/v/leetup.svg)](https://crates.io/crates/leetup) ![Downloads](https://img.shields.io/crates/d/leetup) [![CI](https://github.com/dragfire/leetup/actions/workflows/mean_bean_ci.yml/badge.svg)](https://github.com/dragfire/leetup/actions/workflows/mean_bean_ci.yml)
 
 </h1>
 
