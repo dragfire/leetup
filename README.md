@@ -55,6 +55,7 @@ You can inject pieces of code that you frequently use in certain positions of th
 Create `~/.leetup/config.json` and customize according to your preference:
 ```json
 {
+    "lang": "java",
     "inject_code": {
         "rust": {
             "before_code": ["use std::rc::Rc;", "use std::collections::{HashMap, VecDeque};", "use std::cell::RefCell;"],
@@ -139,6 +140,7 @@ around the generated file e.g. create a directory, move the generated file to th
 `@leetup=problem` will be replaced by the current problem tile e.g. `two-sum`.
 ```json
 {
+    "lang": "rust",
     "inject_code": {
         ...SNIP...
     },
