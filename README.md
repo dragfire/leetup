@@ -2,7 +2,7 @@
 
 <h1 align="center">
 
-![Rust](https://github.com/dragfire/leetup/workflows/Rust/badge.svg) [![crates](https://img.shields.io/crates/v/leetup.svg)](https://crates.io/crates/leetup) ![Downloads](https://img.shields.io/crates/d/leetup)
+[![crates](https://img.shields.io/crates/v/leetup.svg)](https://crates.io/crates/leetup) ![Downloads](https://img.shields.io/crates/d/leetup)
 
 </h1>
 
