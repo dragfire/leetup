@@ -1,11 +1,12 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::{collections::HashMap, str::FromStr};
 
+use log::warn;
 use serde::{de::DeserializeOwned, Deserialize};
 
-use crate::{LeetUpError, Result};
+use crate::{service::Lang, LeetUpError, Result};
 
 type LangInjectCode = HashMap<String, InjectCode>;
 type PickHookConfig = HashMap<String, PickHook>;
@@ -16,6 +17,7 @@ pub struct Config {
     pub urls: Urls,
     pub inject_code: Option<LangInjectCode>,
     pub pick_hook: Option<PickHookConfig>,
+    pub lang: Lang,
 }
 
 impl Config {
@@ -37,19 +39,23 @@ impl Config {
             verify: format!("{}/submissions/detail/$id/check/", base),
         };
 
-        let mut config: Result<Config> = Config::get_config(path);
+        let config: Result<Config> = Config::get_config(path);
 
-        if let Ok(ref mut config) = config {
-            config.urls = urls.clone();
+        match config {
+            Ok(mut c) => {
+                c.urls = urls.clone();
+                c
+            }
+            Err(e) => {
+                warn!("{:#?}", e);
+                Config {
+                    urls,
+                    inject_code: None,
+                    pick_hook: None,
+                    lang: Lang::from_str("rust").unwrap(),
+                }
+            }
         }
-
-        let config = config.unwrap_or(Config {
-            urls,
-            inject_code: None,
-            pick_hook: None,
-        });
-
-        config
     }
 
     fn get_config<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T> {
@@ -159,7 +165,8 @@ fn test_config() {
         "urls": {
             "base": vec![""]
         },
-        "pick_hook": {}
+        "pick_hook": {},
+        "lang": "java"
     });
     let file_path = data_dir.path().join("config.json");
 
@@ -170,6 +177,7 @@ fn test_config() {
     assert!(config.inject_code.is_some());
     assert!(!config.urls.base.is_empty());
     assert!(config.pick_hook.is_some());
+    assert!(matches!(config.lang, Lang::Java(..)));
     drop(file);
     data_dir.close().unwrap();
 }

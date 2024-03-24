@@ -1,6 +1,6 @@
 [package]
 name = "leetup"
-version = "1.2.4"
+version = "1.2.5"
 authors = ["dragfire <asem.devajit@gmail.com>"]
 edition = "2018"
 description = "Leetcode cli"
