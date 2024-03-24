@@ -1,20 +1,19 @@
-// TODO Add more Languages
-
 use std::str::FromStr;
 
 use anyhow::anyhow;
+use serde::{de, Deserialize};
 
 use crate::LeetUpError;
 
 /// Store Lang attributes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LangInfo {
     pub name: String,
     pub extension: String,
     pub comment: Comment,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum CommentStyle {
     Single(String),
     Multiline {
@@ -25,7 +24,7 @@ pub enum CommentStyle {
 }
 
 /// Comment for different languages.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum Comment {
     C(CommentStyle, Option<CommentStyle>),
     Python3(CommentStyle, Option<CommentStyle>),
@@ -193,5 +192,15 @@ impl Lang {
             Lang::Swift(info) => info,
             Lang::Typescript(info) => info,
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for Lang {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Lang::from_str(&s).map_err(de::Error::custom)
     }
 }

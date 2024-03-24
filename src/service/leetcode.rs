@@ -147,7 +147,11 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     async fn pick_problem(&mut self, pick: cmd::Pick) -> Result<()> {
         let probs = self.fetch_problems().await?;
         let urls = &self.config.urls;
-        let lang = pick.lang.info();
+        let lang = pick
+            .lang
+            .as_ref()
+            .map(|l| l.info())
+            .unwrap_or(self.config.lang.info());
 
         let problem: Problem = probs
             .iter()

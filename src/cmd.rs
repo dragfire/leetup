@@ -57,8 +57,8 @@ pub struct Pick {
     pub def: bool,
 
     /// Language used to generate problem's source.
-    #[structopt(short, long, default_value = "rust")]
-    pub lang: Lang,
+    #[structopt(short, long)]
+    pub lang: Option<Lang>,
 }
 
 #[derive(Debug, StructOpt)]
@@ -197,6 +197,7 @@ pub async fn process() -> Result<()> {
     let session = get_session(&mut cache)?;
     let config = get_config(config_dir);
     debug!("Session: {:#?}", session);
+    debug!("Config: {:#?}", config);
 
     let mut provider = Leetcode::new(session.as_ref(), &config, cache)?;
 
