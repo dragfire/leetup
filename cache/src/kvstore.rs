@@ -118,6 +118,11 @@ impl KvStore {
         Ok(None)
     }
 
+    /// Check if key exists in the cache
+    pub fn has_key(&self, key: String) -> bool {
+        self.index.contains_key(&key)
+    }
+
     /// Removes the given key.
     pub fn remove(&mut self, key: String) -> Result<()> {
         // check if key exist in index and delete if from the log file

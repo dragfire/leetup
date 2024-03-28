@@ -85,6 +85,14 @@ impl<'a> ServiceProvider<'a> for Leetcode<'a> {
     }
 
     async fn list_problems(&mut self, list: List) -> Result<()> {
+        if !self.is_user_logged_in() {
+            print!(
+                "{}",
+                Color::Red("You need to login to list problems").make()
+            );
+            return Ok(());
+        }
+
         let problems_res = self.fetch_all_problems().await?;
         let mut probs: ProblemInfoSeq = vec![];
 
@@ -304,6 +312,10 @@ impl<'a> Leetcode<'a> {
             name,
             remote_client: RemoteClient::new(config, session),
         })
+    }
+
+    fn is_user_logged_in(&self) -> bool {
+        self.cache.has_key(CacheKey::Session.into())
     }
 
     fn cache_session(&mut self, session: Session) -> Result<()> {
